@@ -1,0 +1,10 @@
+{
+  "godotTools.editorPath.godot4": "/opt/homebrew/bin/godot",
+  "godotTools.lsp.headless": true,
+  "files.exclude": {
+    "game/.godot": true,
+    "converter/build": true
+  },
+  "java.project.sourcePaths": ["converter/src"],
+  "java.project.outputPath": "converter/build/classes"
+}

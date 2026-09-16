@@ -1,0 +1,5 @@
+.DS_Store
+converter/build/
+game/.godot/
+# Generated from the original game data by convert.sh - not ours to redistribute.
+game/assets/original/

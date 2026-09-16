@@ -1,0 +1,25 @@
+{
+  "_comment": "Schadensmultiplikatoren nach Einheitenfamilie (dbobjects +104, Namen aus db/dbfamily.dat): Angreifer-Familie -> Ziel-Familie. Das Original hat dafuer eine 81x81-Matrix in dbfamily.dat, deren Spaltenzuordnung noch nicht sicher entschluesselt ist (siehe docs/FORMATS.md) - diese Werte sind daher bewusst einfach gehalten und frei aenderbar.",
+  "default": 1.0,
+  "vs_building_default": 0.4,
+  "table": {
+    "Human Spear": { "Lancer": 2.0, "Mounted Spear": 2.0, "Mounted Archer": 1.75, "Chariot": 1.75, "War Elephant": 1.5, "Human Sword": 0.8 },
+    "Spear Thrower": { "Lancer": 1.7, "Mounted Spear": 1.7, "Chariot": 1.6, "War Elephant": 1.5 },
+    "Human Sword": { "Human Spear": 1.35, "Human Archer": 1.3, "Citizen": 1.25, "Lancer": 0.7 },
+    "Human Archer": { "Human Sword": 1.25, "Human Spear": 1.25, "Citizen": 1.25, "Lancer": 0.6, "Mounted Spear": 0.6 },
+    "Lancer": { "Human Archer": 1.75, "Spear Thrower": 1.75, "Citizen": 1.5, "Human Spear": 0.5 },
+    "Mounted Spear": { "Human Archer": 1.75, "Spear Thrower": 1.75, "Citizen": 1.5, "Human Spear": 0.5 },
+    "Mounted Archer": { "Human Archer": 1.5, "Citizen": 1.5, "Human Spear": 0.6 },
+    "Hero": { "Human Sword": 1.5, "Human Spear": 1.5, "Human Archer": 1.5, "Citizen": 2.0 },
+    "Towers": { "Human Sword": 1.2, "Human Spear": 1.2, "Human Archer": 1.2, "Lancer": 1.4, "Mounted Spear": 1.4 }
+  },
+  "vs_building": {
+    "Hero": 1.0,
+    "Ram": 3.0,
+    "Artillery": 2.5,
+    "Siege Building": 2.0,
+    "Citizen": 0.6,
+    "Human Archer": 0.25,
+    "Spear Thrower": 0.25
+  }
+}
