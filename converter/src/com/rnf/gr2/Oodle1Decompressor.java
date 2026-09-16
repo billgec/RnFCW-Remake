@@ -16,7 +16,7 @@ import java.io.IOException;
  * RAD's proprietary SDK/DLL.
  *
  * <p>This is a faithful line-for-line port of the algorithm's control flow;
- * see the C source (or docs/FORMATS.md in the original game repo) for the
+ * see the C source (or docs/FORMATS.md) for the
  * "why", this file mostly just has the "what".
  */
 public final class Oodle1Decompressor {

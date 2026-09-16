@@ -11,32 +11,27 @@ import java.nio.ByteOrder;
 /**
  * Dev tool: decodes a DXT1/3/5 texture out of data.ssa to a PNG on disk, so
  * you can actually look at what an atlas contains instead of inferring it
- * from UV numbers. {@link com.rnf.gfx.DDSTexture} hands the compressed
- * blocks straight to the GPU and never decodes them on the CPU, so this
- * carries its own (slow, clarity-first) block decoder.
+ * from UV numbers. Also used by the converter to turn game textures into PNG.
  *
  * <pre>
- *   mvn exec:java -Dexec.mainClass=com.rnf.tools.DdsToPng
- *       -Dexec.args="textures/ui_ymrtst.dds out.png"
+ *   java -cp build/classes com.rnf.tools.DdsToPng data.ssa "textures\\ui_ymrtst.dds" out.png
  * </pre>
  * (the real archive paths use backslashes)
  */
 public final class DdsToPng {
 
-    private static final String DATA_SSA_PATH = "D:/Code/Rise And Fall/Data/data.ssa";
-
     public static void main(String[] args) throws Exception {
-        if (args.length < 2) {
-            System.err.println("usage: DdsToPng <internal data.ssa path> <output.png>");
+        if (args.length < 3) {
+            System.err.println("usage: DdsToPng <data.ssa> <internal path> <output.png>");
             System.exit(2);
         }
         byte[] dds;
-        try (DataSsaArchive archive = new DataSsaArchive(DATA_SSA_PATH)) {
-            dds = archive.readFile(args[0]);
+        try (DataSsaArchive archive = new DataSsaArchive(args[0])) {
+            dds = archive.readFile(args[1]);
         }
         BufferedImage image = decode(dds);
-        ImageIO.write(image, "png", new File(args[1]));
-        System.out.println("wrote " + args[1] + " (" + image.getWidth() + "x" + image.getHeight() + ")");
+        ImageIO.write(image, "png", new File(args[2]));
+        System.out.println("wrote " + args[2] + " (" + image.getWidth() + "x" + image.getHeight() + ")");
     }
 
     public static BufferedImage decode(byte[] all) {

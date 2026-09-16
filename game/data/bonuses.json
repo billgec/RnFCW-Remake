@@ -1,5 +1,5 @@
 {
-  "_comment": "Schadensmultiplikatoren nach Einheitenfamilie (dbobjects +104, Namen aus db/dbfamily.dat): Angreifer-Familie -> Ziel-Familie. Das Original hat dafuer eine 81x81-Matrix in dbfamily.dat, deren Spaltenzuordnung noch nicht sicher entschluesselt ist (siehe docs/FORMATS.md) - diese Werte sind daher bewusst einfach gehalten und frei aenderbar.",
+  "_comment": "Damage multipliers by unit family (dbobjects +104, names from db/dbfamily.dat): attacker family -> target family. The original ships an 81x81 matrix in dbfamily.dat whose column mapping is not settled yet (see docs/FORMATS.md), so these values are deliberately simple and meant to be tuned.",
   "default": 1.0,
   "vs_building_default": 0.4,
   "table": {

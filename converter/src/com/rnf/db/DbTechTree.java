@@ -11,8 +11,8 @@ import java.util.Map;
  * offsets with variable-length appendices between them, so they have to be
  * found by pattern instead of by index.
  *
- * <p>The pattern (verified byte-by-byte during the mod work, see the original
- * game's {@code tools/FORMATS.md}): an entry is 44 consecutive {@code u32}s
+ * <p>The pattern (verified byte-by-byte, see the original
+ * {@code docs/FORMATS.md}): an entry is 44 consecutive {@code u32}s
  * whose field {@code [2]} is always {@code 14}. Within it:
  *
  * <ul>
@@ -35,7 +35,7 @@ import java.util.Map;
  *       than one resource; nothing in this project spends it yet.</li>
  *   <li>{@code [15]} the object's <b>record index</b> in {@code dbobjects.dat}
  *       (as opposed to {@code [0]}, which is its ID). Confirmed against all
- *       four of the Greek barracks' trainable units; the mod project's notes
+ *       four of the Greek barracks' trainable units; earlier notes
  *       had this one down as "unit-specific ID, meaning unclear".</li>
  *   <li>{@code [16]} index into {@code db\dbButtons.dat} - icon + panel cell</li>
  * </ul>
@@ -68,7 +68,7 @@ public final class DbTechTree {
         // value does turn up in unrelated data (the appendix lists cross-reference IDs
         // too), but those windows fail the [2]==14 test - and where they do not, the
         // real entry is the one whose preceding 100 bytes hold a plausible name, which
-        // is also the earliest one for every ID checked against the Perl tooling.
+        // is also the earliest one for every ID checked so far.
         for (int off = NAME_BYTES_BEFORE; off + ENTRY_WORDS * 4 <= data.length; off += 4) {
             if (buf.getInt(off + 2 * 4) != 14) continue;
             int id = buf.getInt(off);

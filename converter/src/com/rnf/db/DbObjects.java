@@ -10,8 +10,8 @@ import java.util.Map;
  * the game (units, buildings, props): 3079 records of 2012 bytes each.
  *
  * <p>Only the fields this project actually needs are pulled out. Offsets are
- * the ones verified byte-by-byte during the mod work on the original game
- * (see the original game's {@code tools/FORMATS.md}, section "Feld-Layout in
+ * the ones verified byte-by-byte against the original game
+ * (see {@code docs/FORMATS.md}, section "Database tables" -
  * dbobjects.dat"); the same offsets drive {@code tools/rnf_menu.pl} there,
  * which is what this class is a Java port of.
  *

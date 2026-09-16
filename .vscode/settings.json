@@ -1,5 +1,5 @@
 {
-  "godotTools.editorPath.godot4": "/opt/homebrew/bin/godot",
+  "godotTools.editorPath.godot4": "godot",
   "godotTools.lsp.headless": true,
   "files.exclude": {
     "game/.godot": true,

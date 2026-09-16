@@ -10,8 +10,8 @@ import java.util.List;
  * directly above cell N+7.
  *
  * <p>Everything here comes out of the original data files, not a hand-written
- * list. The chain, all of it verified during the mod work on the original
- * game (its {@code tools/rnf_menu.pl} does the same walk in Perl):
+ * list. The chain, verified against the original
+ * game:
  *
  * <ol>
  *   <li>the building's own {@code dbobjects} record carries a <b>build list</b>

@@ -6,8 +6,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 
 /**
- * CLI equivalent of the original game repo's {@code tools/rnf_ssa3.pl}, for
- * poking at {@code data.ssa} without leaving the Java project / needing Perl.
+ * Small CLI for poking at {@code data.ssa}: count entries, list them, or write one
+ * file out (decrypted and decompressed).
  *
  * <pre>
  *   count  &lt;data.ssa&gt;

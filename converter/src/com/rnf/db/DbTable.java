@@ -58,8 +58,7 @@ public final class DbTable {
      * The longest run of printable ASCII (at least {@code minLength} chars) inside
      * record {@code i}. Used for {@code dbobjects.dat}, whose developer-facing name
      * ("A - Inf01 - Sword Infantry (Level 1 Greek)") sits at no fixed offset but is
-     * always the longest such run - the same rule the Perl tooling in the mod
-     * project uses (tools/rnf_menu.pl).
+     * always the longest such run - the same rule used to identify records (tools/rnf_menu.pl).
      */
     public String longestAsciiRun(int i, int minLength) {
         int base = recordStart(i);

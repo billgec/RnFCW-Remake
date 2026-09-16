@@ -15,7 +15,7 @@ import java.util.List;
  * <p>{@code +0} repeats the object's developer name, {@code +100} is the name
  * of its {@code .udf} definition (not the {@code .gr2} - that is one more hop,
  * see {@code com.rnf.assets.UnitDefinition}), {@code +204} the record's own
- * index. Layout verified in the mod project next door, whose
+ * index. Layout verified against the original game, whose
  * {@code tools/rnf_gfxmodel.pl} reads and patches the same field.
  */
 public final class DbGraphics {
