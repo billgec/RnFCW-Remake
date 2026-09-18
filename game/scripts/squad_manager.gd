@@ -1,22 +1,32 @@
 extends Node3D
 ## Groups (the original's formation banners): at least MIN_SIZE soldiers of the same type
 ## and team standing together form a persistent group marked by the original banner above
-## its centre. A group stays together once formed - clicking any member, or the banner,
-## selects the whole group, and single units of the same type join a group they walk into.
+## its centre - freshly trained soldiers that gather at a rally point form one by themselves.
+## A group stays together once formed: clicking any member, or the banner, or catching part
+## of it in a selection box takes the whole group, and it marches as a block (see march()).
 
 const MIN_SIZE := 9
-const MAX_SIZE := 20
+const MAX_SIZE := 64
 const LINK_DISTANCE := 4.5
 const JOIN_DISTANCE := 7.0
 const DISSOLVE_BELOW := 4
 const BANNER_HEIGHT := 5.6
 const BANNER_SCALE := 0.62
 
-var squads: Array[Dictionary] = []  # {members: Array, banner: Node3D, team: int, type: String}
+## Marching: how far the block may run ahead of its stragglers before it waits for them,
+## how often the soldiers are given their updated slot, and when the march counts as done.
+const MARCH_LEASH := 6.0
+const MARCH_REISSUE := 0.4
+const MARCH_ARRIVED := 1.5
+const MARCH_PATIENCE := 3.0   # after waiting this long for a straggler, the block moves on
+
+var squads: Array[Dictionary] = []  # {id, members, banner, team, type, march?}
 
 var _timer := 0.0
 var _squad_of := {}  # unit instance id -> squad dictionary
 var _banner_pool: Array[Node3D] = []
+var _next_id := 1
+var _marches: Array[Dictionary] = []
 
 
 func _process(delta: float) -> void:
@@ -24,6 +34,8 @@ func _process(delta: float) -> void:
 	if _timer <= 0.0:
 		_timer = 0.5
 		_update_membership()
+	for record in _marches.duplicate():
+		_advance_march(record, delta)
 	var t := Time.get_ticks_msec() / 1000.0
 	var camera := get_viewport().get_camera_3d()
 	for squad in squads:
@@ -77,11 +89,10 @@ func _update_membership() -> void:
 		var key := "%d:%s" % [squad["team"], squad["type"]]
 		if not loose.has(key) or squad["members"].size() >= MAX_SIZE:
 			continue
-		var center := _center(squad["members"])
 		for unit in loose[key].duplicate():
 			if squad["members"].size() >= MAX_SIZE:
 				break
-			if unit.position.distance_to(center) <= JOIN_DISTANCE:
+			if _distance_to_nearest(squad["members"], unit) <= JOIN_DISTANCE:
 				squad["members"].append(unit)
 				_squad_of[unit.get_instance_id()] = squad
 				loose[key].erase(unit)
@@ -95,12 +106,121 @@ func _update_membership() -> void:
 				var banner := _take_banner()
 				banner.global_position = _center(members) + Vector3.UP * BANNER_HEIGHT
 				var squad := {
-					"members": members, "banner": banner,
+					"id": _next_id, "members": members, "banner": banner,
 					"team": members[0].team, "type": members[0].definition_id,
 				}
+				_next_id += 1
 				squads.append(squad)
 				for u in members:
 					_squad_of[u.get_instance_id()] = squad
+
+
+# --- marching ---------------------------------------------------------------
+
+## Sends [param members] to [param target] as a block, whether they are a group or just a
+## handful of soldiers the player picked. The formation is laid out facing the way it
+## travels, everyone gets the slot nearest to where they already stand, and the block then
+## walks as one - see _advance_march. Pass the group in [param squad] so the block follows
+## its membership as soldiers join or fall.
+func march(members: Array, target: Vector3, attack_move := false, squad := {}) -> void:
+	var living := _living(members)
+	if living.is_empty():
+		return
+	_stop_marches_of(living)
+	var center := _center(living)
+	var forward := Vector3(target.x - center.x, 0.0, target.z - center.z)
+	forward = forward.normalized() if forward.length() > 0.5 else Vector3.FORWARD
+	var record := {
+		"squad": squad, "members": living, "anchor": center,
+		"target": Vector3(target.x, 0.0, target.z),
+		"forward": forward, "right": forward.cross(Vector3.UP),
+		"attack": attack_move, "timer": MARCH_REISSUE, "slots": {}, "waited": 0.0,
+	}
+	_marches.append(record)
+	_assign_slots(record, living)
+	_issue_march(record, living, true)
+
+
+## New orders replace old ones: a soldier only ever marches in one block.
+func _stop_marches_of(members: Array) -> void:
+	var ids := {}
+	for unit in members:
+		ids[unit.get_instance_id()] = true
+	for record in _marches.duplicate():
+		for unit in _march_members(record):
+			if ids.has(unit.get_instance_id()):
+				_marches.erase(record)
+				break
+
+
+func _march_members(record: Dictionary) -> Array:
+	var squad: Dictionary = record["squad"]
+	return _living(squad["members"] if not squad.is_empty() else record["members"])
+
+
+## The block walks as one: its anchor creeps towards the target at the pace of the slowest
+## soldier and holds whenever somebody falls too far behind, so the formation keeps its
+## shape on the way instead of only at the destination.
+func _advance_march(record: Dictionary, delta: float) -> void:
+	var members := _march_members(record)
+	if members.is_empty():
+		_marches.erase(record)
+		return
+	if record["slots"].size() != members.size():
+		_assign_slots(record, members)
+	var lag := 0.0
+	var speed := INF
+	for unit in members:
+		lag = maxf(lag, unit.position.distance_to(_slot_position(record, unit)))
+		speed = minf(speed, unit.move_speed)
+	var to_target: Vector3 = record["target"] - record["anchor"]
+	to_target.y = 0.0
+	var remaining := to_target.length()
+	if remaining > 0.2 and (lag < MARCH_LEASH or record["waited"] > MARCH_PATIENCE):
+		record["anchor"] += to_target / remaining * minf(speed * delta, remaining)
+		if lag < MARCH_LEASH:
+			record["waited"] = 0.0
+	elif remaining > 0.2:
+		# Somebody is stuck or fighting: wait for them, but not for ever.
+		record["waited"] += delta
+	record["timer"] -= delta
+	if record["timer"] <= 0.0:
+		record["timer"] = MARCH_REISSUE
+		_issue_march(record, members)
+	if remaining <= 0.2 and lag <= MARCH_ARRIVED:
+		_marches.erase(record)
+
+
+func _assign_slots(record: Dictionary, members: Array) -> void:
+	var spacing := Formation.spacing_for(members[0])
+	record["slots"] = Formation.assign(members, Formation.slots(members.size(), spacing),
+		record["anchor"], record["forward"], record["right"])
+
+
+func _issue_march(record: Dictionary, members: Array, force := false) -> void:
+	for unit in members:
+		# Someone in a fight keeps fighting and falls back in once it is over.
+		if unit.state == Unit.State.ATTACK:
+			continue
+		var goal := _slot_position(record, unit)
+		if force or unit.position.distance_to(goal) > 1.2:
+			unit.order_move(goal, record["attack"])
+
+
+func _slot_position(record: Dictionary, unit) -> Vector3:
+	var offset: Vector2 = record["slots"].get(unit.get_instance_id(), Vector2.ZERO)
+	return record["anchor"] + record["right"] * offset.x - record["forward"] * offset.y
+
+
+static func _living(members: Array) -> Array:
+	return members.filter(func(u): return is_instance_valid(u) and u.is_alive())
+
+
+static func _distance_to_nearest(members: Array, unit) -> float:
+	var best := INF
+	for member in members:
+		best = minf(best, member.position.distance_to(unit.position))
+	return best
 
 
 static func _clusters(units: Array) -> Array:

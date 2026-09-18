@@ -34,7 +34,7 @@ export RNF_DATA_SSA="/path/to/Rise And Fall/Data/data.ssa"   # optional, see con
 | WASD / arrow keys / mouse at screen edge | pan the camera |
 | Mouse wheel · Q/E · middle mouse drag | zoom · rotate |
 | Left click / drag a box | select (Shift adds to the selection) |
-| Click a unit of a group, or its banner | select the whole group |
+| Click a unit of a group, its banner, or drag a box over part of it | select the whole group |
 | Double click a unit | select every visible unit of that type |
 | Right click | move · attack a unit or building · citizens: gather wood/gold, help build or repair · with a building selected: set the rally point |
 | Cmd/Ctrl + right click | attack-move |
@@ -71,7 +71,11 @@ export RNF_DATA_SSA="/path/to/Rise And Fall/Data/data.ssa"   # optional, see con
   which gates everything else; unit upgrades (researched in the building's top row, paid for
   in glory) then unlock the next of the five levels of that unit line, and units already in
   the field are replaced by their veteran version
-* Groups of 9+ identical soldiers form a formation marked by the original banner
+* Groups: 9 to 64 identical soldiers standing together form a formation under the original
+  banner, freshly trained troops gathering at a rally point among them. A group is selected
+  as a whole and marches as a block - the formation is laid out facing the way it travels,
+  everyone gets the slot nearest to where they stand, and the block waits for stragglers
+  instead of tearing apart
 * A computer opponent that gathers, trains and attacks in waves
 * The original mouse pointers, switching with context (attack, wood, gold, build, repair, …)
 * Hero mode: take direct third-person control of the hero, with the original's third-person

@@ -7,7 +7,7 @@ extends Node3D
 ##   --frames=<n>            frames to wait before the snapshot (default 90)
 ##   --cam=<x>,<z>,<yaw°>,<distance>,<pitch°>   initial camera placement
 ##   --demo-move=<x>,<z>     select the blue soldiers and attack-move there
-##   --demo-select=<what>    army | workers | barracks | towncenter | heromode
+##   --demo-select=<what>    army | workers | barracks | towncenter | heromode | halfbox | squads | rally
 ##   --hero-action=<what>    with --demo-select=heromode: run | attack | special | duel
 ##   --show-health=1         always show hit point bars
 ##   --perf=<seconds>        log the frame budget every few seconds
@@ -254,6 +254,50 @@ func _demo_select() -> void:
 				print("clicked %s -> %d selected (group has %d)" % [unit.display_name,
 					_selection.selected_units().size(), squads.squad_of(unit)["members"].size()])
 				break
+		"rally":
+			# Freshly trained soldiers gathering at a rally point must form a group of their own.
+			await get_tree().create_timer(0.5).timeout
+			for b in Building.all_buildings:
+				if b.team != 0 or b.definition_id != BARRACKS:
+					continue
+				b.rally_point = b.global_position + Vector3(0, 0, 16)
+				GameState.player(0)["gold"] += 3000
+				GameState.player(0)["wood"] += 3000
+				for i in 5:
+					b.enqueue(b.trains[0]["unit"])
+				var squads_node: Node = get_node("Squads")
+				for step in 12:
+					await get_tree().create_timer(15.0).timeout
+					var fresh := []
+					for squad in squads_node.squads:
+						if squad["team"] == 0:
+							fresh.append("%d x %s" % [squad["members"].size(), squad["type"]])
+					print("[t=%3ds] team0 groups: %s" % [(step + 1) * 15, ", ".join(fresh)])
+				break
+		"halfbox":
+			# Drag a box over only the front half of a group: all of it must end up selected.
+			await get_tree().create_timer(1.2).timeout
+			var squads_node: Node = get_node("Squads")
+			var camera := get_viewport().get_camera_3d()
+			for squad in squads_node.squads:
+				if squad["team"] != 0:
+					continue
+				var members: Array = squad["members"]
+				var half: Array = members.slice(0, members.size() / 2)
+				var rect := Rect2(camera.unproject_position(half[0].global_position + Vector3.UP), Vector2.ZERO)
+				for unit in half:
+					rect = rect.expand(camera.unproject_position(unit.global_position + Vector3.UP))
+				_selection._drag_start = rect.position - Vector2(6, 6)
+				_selection._drag_end = rect.end + Vector2(6, 6)
+				_selection._finish_selection(false)
+				print("box over %d of %d %s -> %d selected" % [half.size(), members.size(),
+					members[0].display_name, _selection.selected_units().size()])
+				break
+		"squads":
+			await get_tree().create_timer(1.2).timeout
+			var node: Node = get_node("Squads")
+			for squad in node.squads:
+				print("group: %d x %s (team %d)" % [squad["members"].size(), squad["type"], squad["team"]])
 		"doubleclick":
 			await get_tree().create_timer(1.0).timeout
 			var camera := get_viewport().get_camera_3d()
@@ -401,9 +445,15 @@ func _log_loop() -> void:
 					var s: String = Unit.State.keys()[u.state]
 					states[s] = states.get(s, 0) + 1
 			var p := GameState.player(team)
-			line += "  team%d: %d soldiers %d workers gold %d wood %d glory %d hero %d research %d %s" % [team,
-				soldiers, workers, p["gold"], p["wood"], p.get("glory", 0), GameState.hero_level(team),
-				GameState.research_count(team), states]
+			var groups := 0
+			var grouped := 0
+			for squad in (get_node("Squads").squads if has_node("Squads") else []):
+				if squad["team"] == team:
+					groups += 1
+					grouped += squad["members"].size()
+			line += "  team%d: %d soldiers (%d in %d groups) %d workers gold %d wood %d glory %d hero %d research %d %s" % [team,
+				soldiers, grouped, groups, workers, p["gold"], p["wood"], p.get("glory", 0),
+				GameState.hero_level(team), GameState.research_count(team), states]
 		print(line)
 
 

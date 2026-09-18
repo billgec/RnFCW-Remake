@@ -207,6 +207,8 @@ func _finish_selection(additive: bool) -> void:
 				continue
 			if rect.has_point(_camera.unproject_position(unit.global_position + Vector3.UP)):
 				picked.append(unit)
+		# A group is one thing: catching half of it in the box takes all of it.
+		picked = _with_whole_squads(picked)
 	else:
 		var squad: Dictionary = squads.squad_at(_drag_end, _camera) if squads else {}
 		if not squad.is_empty() and squad["members"][0].team == own_team:
@@ -276,6 +278,22 @@ func _command(screen_point: Vector2, attack_move: bool) -> void:
 		order_selected_move(point, attack_move, units)
 
 
+## Completes a selection: every group that any of these units belongs to comes along whole.
+func _with_whole_squads(units: Array[Unit]) -> Array[Unit]:
+	if squads == null:
+		return units
+	var result: Array[Unit] = []
+	var seen := {}
+	for unit in units:
+		var squad: Dictionary = squads.squad_of(unit)
+		var members: Array = squad["members"] if not squad.is_empty() else [unit]
+		for member in members:
+			if is_instance_valid(member) and member.is_alive() and not seen.has(member.get_instance_id()):
+				seen[member.get_instance_id()] = true
+				result.append(member)
+	return result
+
+
 ## Double click: every own unit of that type currently on screen, like the original.
 func _select_same_type_on_screen(screen_point: Vector2, additive: bool) -> void:
 	var clicked := _unit_at(screen_point, true)
@@ -284,13 +302,16 @@ func _select_same_type_on_screen(screen_point: Vector2, additive: bool) -> void:
 	if not additive:
 		clear_selection()
 	var view := get_viewport().get_visible_rect().grow(-4)
+	var picked: Array[Unit] = []
 	for unit in Unit.all_units:
 		if unit.team != own_team or unit.definition_id != clicked.definition_id:
 			continue
 		if _camera.is_position_behind(unit.global_position):
 			continue
 		if view.has_point(_camera.unproject_position(unit.global_position + Vector3.UP)):
-			unit.selected = true
+			picked.append(unit)
+	for unit in _with_whole_squads(picked):
+		unit.selected = true
 	selection_changed.emit()
 
 
@@ -340,13 +361,43 @@ func _ground_point(screen: Vector2):
 	return Plane(Vector3.UP, 0.0).intersects_ray(origin, direction)
 
 
+## Move order: everything that is selected marches as a block - every group as itself, the
+## rest gathered into one block per unit type. Several blocks are placed side by side
+## instead of being sent onto the same spot.
 func order_selected_move(point: Vector3, attack_move := false, units: Array = []) -> void:
 	if units.is_empty():
 		units = selected_units()
 	if units.is_empty():
 		return
 	_show_marker(point)
-	Formation.move(units, point, attack_move)
+	if squads == null:
+		Formation.move(units, point, attack_move)
+		return
+	var blocks: Array = []  # {members, squad}
+	var by_squad := {}
+	var by_type := {}
+	var center := Vector3.ZERO
+	for unit in units:
+		center += unit.position
+		var squad: Dictionary = squads.squad_of(unit)
+		if squad.is_empty():
+			if not by_type.has(unit.definition_id):
+				by_type[unit.definition_id] = []
+				blocks.append({"members": by_type[unit.definition_id], "squad": {}})
+			by_type[unit.definition_id].append(unit)
+		elif not by_squad.has(squad["id"]):
+			by_squad[squad["id"]] = true
+			blocks.append({"members": squad["members"], "squad": squad})
+	center /= units.size()
+	blocks.sort_custom(func(a, b): return Formation.type_order(a["members"][0]) < Formation.type_order(b["members"][0]))
+	var widths: Array = []
+	for block in blocks:
+		# A group's roster is only cleaned up twice a second, so count the living.
+		var members: Array = block["members"].filter(func(u): return is_instance_valid(u) and u.is_alive())
+		widths.append(Formation.block_width(members.size(), Formation.spacing_for(members[0])) if not members.is_empty() else 0.0)
+	var targets := Formation.spread(point, center, widths)
+	for i in blocks.size():
+		squads.march(blocks[i]["members"], targets[i], attack_move, blocks[i]["squad"])
 
 
 func _build_marker() -> void:
