@@ -1,0 +1,8 @@
+{
+  "_comment": "Glory income. The original grants glory for kills, for your own losses, for finished buildings and from glory statues; the exact rates are not in the data files, so these are tuned by feel and meant to be adjusted.",
+  "per_kill": 3,
+  "per_own_loss": 2,
+  "per_building": 8,
+  "statue_interval_s": 10.0,
+  "statue_amount": 3
+}

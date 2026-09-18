@@ -7,7 +7,8 @@ extends Node3D
 ##   --frames=<n>            frames to wait before the snapshot (default 90)
 ##   --cam=<x>,<z>,<yaw°>,<distance>,<pitch°>   initial camera placement
 ##   --demo-move=<x>,<z>     select the blue soldiers and attack-move there
-##   --demo-select=<what>    army | workers | barracks | towncenter
+##   --demo-select=<what>    army | workers | barracks | towncenter | heromode
+##   --hero-action=<what>    with --demo-select=heromode: run | attack | special
 ##   --show-health=1         always show hit point bars
 ##   --timescale=<f>         speed up the simulation (e.g. to watch the computer player)
 
@@ -41,8 +42,8 @@ func _ready() -> void:
 	GameState.set_speed(float(_args.get("timescale", "1")))
 	HealthBar.force_visible = _args.has("show-health")
 	GameState.setup_players([
-		{"team": 0, "name": "Du", "color": BLUE, "gold": 250, "wood": 450},
-		{"team": 1, "name": "Computer", "color": RED, "gold": 250, "wood": 450},
+		{"team": 0, "name": "Du", "color": BLUE, "gold": 250, "wood": 450, "glory": 40},
+		{"team": 1, "name": "Computer", "color": RED, "gold": 250, "wood": 450, "glory": 40},
 	])
 	_build_environment()
 	_build_ground()
@@ -62,8 +63,14 @@ func _ready() -> void:
 	_selection.squads = squads
 	ui.add_child(_selection)
 	add_child(ui)
+	var hero_mode := HeroMode.new()
+	hero_mode.name = "HeroMode"
+	hero_mode.camera_rig = camera_rig
+	hero_mode.selection = _selection
+	add_child(hero_mode)
 	var hud := Hud.new()
 	hud.selection = _selection
+	hud.hero_mode = hero_mode
 	add_child(hud)
 	var ai := EnemyAI.new()
 	add_child(ai)
@@ -120,8 +127,8 @@ func _build_base(team: int, origin: Vector3, yaw: float) -> void:
 			unit.rotation_degrees.y = yaw + 180.0
 			add_child(unit)
 		column += 9.0
-	if team == 0:
-		var hero := Unit.create("men_ymalexandermelee_02", team, color)
+	var hero := Unit.create("men_ymalexandermelee_02", team, color)
+	if true:
 		hero.position = front + Vector3(0, 0, -3 * facing)
 		hero.rotation_degrees.y = yaw + 180.0
 		add_child(hero)
@@ -258,6 +265,62 @@ func _demo_select() -> void:
 				print("double click %s -> %d selected (%d of this type alive)" % [unit.display_name,
 					_selection.selected_units().size(), total])
 				break
+		"hero":
+			await get_tree().create_timer(0.5).timeout
+			GameState.add_resource(0, "glory", 80)
+			for unit in Unit.all_units:
+				if unit.team == 0 and unit.is_hero:
+					_selection.clear_selection()
+					unit.selected = true
+					_selection.selection_changed.emit()
+					break
+		"heromode":
+			await get_tree().create_timer(0.6).timeout
+			var mode: Node = get_node("HeroMode")
+			mode.enter()
+			match _args.get("hero-action", ""):
+				"run":
+					Input.action_press("cam_forward")
+				"attack":
+					mode._attack()
+				"special":
+					mode._special()
+				"duel":
+					await _hero_duel(mode)
+			print("hero mode active: %s, retinue %d" % [mode.active, mode.retinue_size()])
+		"builds":
+			await get_tree().create_timer(0.5).timeout
+			for unit in Unit.all_units:
+				if unit.team == 0 and unit.is_worker:
+					_selection.clear_selection()
+					unit.selected = true
+					_selection.selection_changed.emit()
+					break
+		"research":
+			await get_tree().create_timer(0.5).timeout
+			for b in Building.all_buildings:
+				if b.team != 0 or b.definition_id != BARRACKS:
+					continue
+				b.selected = true
+				_selection.selected_building = b
+				print("upgrades at hero level 1: %d" % b.available_upgrades().size())
+				GameState.add_resource(0, "glory", 200)
+				GameState.set_hero_level(0, 2)
+				var before := b.available_trains().map(func(e): return e["name"])
+				print("upgrades at hero level 2: %s" % [b.available_upgrades().map(func(e): return e["name"])])
+				var upgrade: Dictionary = b.available_upgrades()[0]
+				print("researching %s (cost %s)" % [upgrade["name"], upgrade["cost"]])
+				b.enqueue_research(upgrade)
+				await GameState.research_completed
+				print("before: %s" % [before])
+				print("after:  %s" % [b.available_trains().map(func(e): return e["name"])])
+				var levels := {}
+				for u in Unit.all_units:
+					if u.team == 0 and u.line == "sword infantry (greek)":
+						levels[u.display_name] = levels.get(u.display_name, 0) + 1
+				print("field:  %s" % [levels])
+				print("upgrades now: %s" % [b.available_upgrades().map(func(e): return e["name"])])
+				break
 		"barracks", "towncenter":
 			var id := BARRACKS if _args["demo-select"] == "barracks" else TOWN_CENTER
 			for b in Building.all_buildings:
@@ -269,6 +332,37 @@ func _demo_select() -> void:
 					b.enqueue(b.trains[1]["unit"])
 					break
 	_selection.selection_changed.emit()
+
+
+## Headless check of the hero's own attacks: put him in front of an enemy block, swing, then
+## set off the special attack and count who took damage.
+func _hero_duel(mode: Node) -> void:
+	var enemies: Array[Unit] = []
+	for u in Unit.all_units:
+		if u.team == 1 and not u.is_worker and not u.is_hero:
+			enemies.append(u)
+	if enemies.is_empty():
+		return
+	var victim := enemies[0]
+	mode._hero.position = victim.position + Vector3(0, 0, 3.0)
+	camera_rig._yaw = 0.0  # look towards -Z, where the enemy stands
+	await get_tree().create_timer(0.4).timeout
+	var before := victim.hit_points
+	mode._attack()
+	await get_tree().create_timer(0.6).timeout
+	print("swing: %s %.0f -> %.0f hp (damage %.0f)" % [victim.display_name, before, victim.hit_points, before - victim.hit_points])
+	var hp := {}
+	for u in enemies:
+		hp[u] = u.hit_points
+	mode._special()
+	await get_tree().create_timer(3.0).timeout
+	var hit := 0
+	var total := 0.0
+	for u in enemies:
+		if u.hit_points < hp[u]:
+			hit += 1
+			total += hp[u] - u.hit_points
+	print("special: %d enemies hit for %.0f damage in total" % [hit, total])
 
 
 func _log_loop() -> void:
@@ -286,7 +380,9 @@ func _log_loop() -> void:
 					var s: String = Unit.State.keys()[u.state]
 					states[s] = states.get(s, 0) + 1
 			var p := GameState.player(team)
-			line += "  team%d: %d soldiers %d workers gold %d wood %d %s" % [team, soldiers, workers, p["gold"], p["wood"], states]
+			line += "  team%d: %d soldiers %d workers gold %d wood %d glory %d hero %d research %d %s" % [team,
+				soldiers, workers, p["gold"], p["wood"], p.get("glory", 0), GameState.hero_level(team),
+				GameState.research_count(team), states]
 		print(line)
 
 

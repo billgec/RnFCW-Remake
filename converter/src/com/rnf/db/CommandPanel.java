@@ -72,12 +72,25 @@ public final class CommandPanel {
      */
     public static Cell[] build(DbObjects.Entry building, String civ,
                                DbObjects objects, DbButtons buttons, DbTechTree techTree) {
+        return build(building, civ, objects, buttons, techTree, false).toArray(new Cell[CELLS]);
+    }
+
+    /**
+     * @param includeLocked also return entries that still need a research - the remake needs
+     *                      the whole ladder up front, the original panel only shows what is
+     *                      available right now
+     * @return {@link #CELLS} slots, null where empty; with {@code includeLocked} the list can
+     *         be longer because several levels share one slot
+     */
+    public static java.util.List<Cell> build(DbObjects.Entry building, String civ, DbObjects objects,
+                                             DbButtons buttons, DbTechTree techTree, boolean includeLocked) {
         List<Cell> fixed = new ArrayList<>();
         List<Cell> unplaced = new ArrayList<>();
 
         for (int id : building.buildList()) {
             DbTechTree.Entry tech = techTree.byId(id);
-            if (tech == null || tech.prerequisiteId() != 0) continue; // needs a research first
+            if (tech == null) continue;
+            if (tech.prerequisiteId() != 0 && !includeLocked) continue; // needs a research first
 
             DbObjects.Entry unit = objects.byObjectId(id);
             Kind kind = unit != null ? Kind.UNIT : Kind.UPGRADE;
@@ -95,6 +108,7 @@ public final class CommandPanel {
             else unplaced.add(cell);
         }
 
+        java.util.List<Cell> locked = new ArrayList<>();
         Cell[] grid = new Cell[CELLS];
         for (Cell c : fixed) {
             Cell existing = grid[c.index()];
@@ -102,7 +116,10 @@ public final class CommandPanel {
             // research sharing one button. Whichever kind belongs in that row wins;
             // otherwise first come, first served.
             if (existing == null || (belongsInRow(c) && !belongsInRow(existing))) {
+                if (existing != null) locked.add(existing);
                 grid[c.index()] = c;
+            } else {
+                locked.add(c);
             }
         }
         // Only upgrades get auto-placed. Units without a fixed cell are the ones that
@@ -121,7 +138,9 @@ public final class CommandPanel {
                 }
             }
         }
-        return grid;
+        java.util.List<Cell> all = new ArrayList<>(java.util.Arrays.asList(grid));
+        if (includeLocked) all.addAll(locked);
+        return all;
     }
 
     private static boolean belongsInRow(Cell c) {

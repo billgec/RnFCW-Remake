@@ -237,6 +237,50 @@ One 44 x u32 entry per trainable unit, research or building, recognisable by `[2
 Examples for the cost reading: swordsman 19000/0, spearman 24000/25, archer 28000/30,
 cavalry 42000/0, citizen 25000/0, barracks 50000/325, town centre 60000/350.
 
+#### Upgrades
+
+Every unit line exists five times, once per level, each as its own object with its own name
+(Greek swordsmen: *Hypaspist → Improved Hypaspist → Companion → Improved Companion → Royal
+Guard*). `[1] - 4` is that level, and `[11]` names the research that unlocks it. The research
+entries themselves look the same and are recognised by the fact that no object carries their
+id; their name sits in the 100 bytes in front of the entry, and their player-facing name is
+the string id in `[18]`.
+
+A research entry carries an appendix at **entry + 348**:
+
+```
+u32 count | count x u32   dbobjects record indices of the buildings offering the research
+u32 count | count x u32   what it unlocks: unit object ids and follow-up research ids
+```
+
+Example, *UP - Inf Sword 2 (Greek)*: 8 buildings (the barracks of all four civilizations in
+their MP and SP variants) and `[UP Sword 3, 8425, Sword Infantry Level 2]`. The appendix has
+variable length, so values can be swapped safely but lists cannot be extended in place.
+
+A research enters a building's panel exactly like a unit: its id is in the building's build
+list, its button is `[16]`, and that button's `+216` decides the slot. The upper row (0–6)
+holds the upgrade for the unit directly below it (slot N over slot N+7).
+
+Research entries have no build time of their own (`[7] == 0`); the original presumably
+derives it elsewhere.
+
+#### Hero levels ("epoch" techs) and glory
+
+The hero's own build list holds the entries `ACTION - LEVEL 02` … `ACTION - LEVEL 10`: the
+hero is where you spend glory to level up, and each level unlocks the next tier of everything
+else. `LEVEL 02` unlocks 27 entries for the Greeks (among them the ballista research and the
+Spartan Academy), `LEVEL 05` unlocks the fire raiser.
+
+That makes `[1] - 4` a **requirement** as well as a level: an entry becomes available when its
+prerequisite research is done *and* the hero has reached that level.
+
+Costs split by currency: units and buildings are paid for with `[10]` gold (x1000) and `[5]`
+wood; researches - unit upgrades and hero levels alike - are paid for with glory, again
+`[10]` x1000 (unit upgrade 40, hero levels 60/70/80/90). Glory itself is earned for kills,
+for your own losses, for finished buildings and from glory statues; the rates are not in the
+data files (only techs that *increase* them are: "Tech - Glory Killing Increase",
+"Tech - Glory Losses Increase", "Tech - Glory Building Construction Increase", advisors).
+
 ### `dbButtons.dat` – 232 bytes per record
 
 `+100` icon path (without extension), `+204` own index, `+216` panel slot. The command panel

@@ -31,8 +31,14 @@ var radius := 0.6
 var ranged := false
 var is_worker := false
 var family := ""
+var line := ""
+var level := 1
 var is_hero := false
 var state := State.IDLE
+## Set while the player steers this unit directly (hero mode): its own state machine is off
+## and hero_mode.gd moves, animates and swings for it.
+var player_controlled := false
+var damage_reduction := 0.0  # while blocking in hero mode
 
 var carrying := 0
 var carry_kind := ""
@@ -57,6 +63,7 @@ var _swing_timer := -1.0
 var _scan_timer := 0.0
 var _repath_timer := 0.0
 var _work_timer := 0.0
+var _last_attacker_team := -1
 var _stuck_timer := 0.0
 var _stuck_from := Vector3.ZERO
 var _repaths := 0
@@ -76,6 +83,25 @@ static func create(id: String, team_index: int, color: Color) -> Unit:
 	return unit
 
 
+## Swaps a unit for its upgraded version, keeping place, facing, damage taken and selection.
+static func replace_with(old: Unit, new_id: String) -> Unit:
+	if not is_instance_valid(old) or not old.is_alive():
+		return null
+	var fresh := Unit.create(new_id, old.team, old.team_color)
+	fresh.position = old.position
+	fresh.rotation = old.rotation
+	var fraction := old.hit_points / maxf(old.max_hit_points, 1.0)
+	var was_selected := old.selected
+	old.get_parent().add_child(fresh)
+	fresh.hit_points = fresh.max_hit_points * fraction
+	fresh.selected = was_selected
+	old.state = State.DEAD
+	old.selected = false
+	all_units.erase(old)
+	old.queue_free()
+	return fresh
+
+
 func _ready() -> void:
 	all_units.append(self)
 	var def := Assets.unit_def(definition_id)
@@ -92,6 +118,8 @@ func _ready() -> void:
 	var footprint: Array = stats.get("footprint_m", [1.2, 1.2])
 	radius = clampf(maxf(footprint[0], footprint[1]) * 0.45, 0.45, 1.4)
 	family = stats.get("family", "")
+	line = stats.get("line", "")
+	level = int(def.get("level", 1))
 	is_worker = int(stats.get("attack_type", 0)) == 5
 	is_hero = "alexander" in definition_id or "hero" in definition_id
 	ranged = int(stats.get("attack_type", 0)) == 1
@@ -182,11 +210,15 @@ func order_build(building: Building) -> void:
 func take_damage(amount: float, attacker) -> void:
 	if not is_alive():
 		return
-	hit_points -= amount
+	hit_points -= amount * (1.0 - damage_reduction)
 	_update_health_bar()
+	if attacker and is_instance_valid(attacker):
+		_last_attacker_team = attacker.team
 	if hit_points <= 0.0:
 		_die()
 		return
+	if player_controlled:
+		return  # the player decides what to answer with
 	var busy: bool = state == State.ATTACK and _target != null and _target.is_alive()
 	if attacker and attacker.is_alive() and attacker is Unit and not busy and state != State.MOVE:
 		if not is_worker or state == State.IDLE:
@@ -196,7 +228,7 @@ func take_damage(amount: float, attacker) -> void:
 # --- simulation -----------------------------------------------------------
 
 func _physics_process(delta: float) -> void:
-	if not is_alive():
+	if not is_alive() or player_controlled:
 		return
 	_cooldown -= delta
 	_scan_timer -= delta
@@ -376,6 +408,52 @@ func _update_build(delta: float) -> void:
 		_construction.add_construction(delta)
 
 
+# --- direct control (hero mode) -------------------------------------------
+
+## Hands the unit back to its own state machine.
+func resume_idle() -> void:
+	if not is_alive():
+		return
+	player_controlled = false
+	damage_reduction = 0.0
+	_target = null
+	_path = PackedVector3Array()
+	state = State.IDLE
+	_play("idle")
+
+
+## Moves by [param motion] metres, staying on the navmesh.
+func step(motion: Vector3) -> void:
+	position += motion
+	position = NavigationServer3D.map_get_closest_point(get_world_3d().navigation_map, position)
+	position.y = 0.0
+
+
+## Turns towards an absolute heading (radians around Y).
+func turn_to(yaw: float, delta: float) -> void:
+	rotation.y = lerp_angle(rotation.y, yaw, 1.0 - exp(-12.0 * delta))
+
+
+func has_animation(anim: String) -> bool:
+	return _player != null and _player.has_animation(anim)
+
+
+## Plays an animation by its name in the model and returns its length in seconds. Looping
+## animations are only restarted when they are not already running.
+func play_animation(anim: String, blend := 0.15, speed := 1.0, loop := true) -> float:
+	if not has_animation(anim):
+		return 0.0
+	var animation := _player.get_animation(anim)
+	animation.loop_mode = Animation.LOOP_LINEAR if loop else Animation.LOOP_NONE
+	if loop:
+		if _player.current_animation != anim:
+			_player.play(anim, blend, speed)
+	else:
+		_player.stop()
+		_player.play(anim, blend, speed)
+	return animation.length / maxf(speed, 0.01)
+
+
 func _clear_work() -> void:
 	_release_resource()
 	_construction = null
@@ -389,6 +467,12 @@ func _release_resource() -> void:
 
 func _die() -> void:
 	state = State.DEAD
+	player_controlled = false
+	damage_reduction = 0.0
+	# The original pays glory both ways: for the kill and for your own fallen.
+	GameState.add_glory(team, "per_own_loss")
+	if _last_attacker_team >= 0 and _last_attacker_team != team:
+		GameState.add_glory(_last_attacker_team, "per_kill")
 	selected = false
 	_clear_work()
 	_target = null

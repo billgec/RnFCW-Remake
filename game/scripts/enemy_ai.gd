@@ -35,8 +35,78 @@ func _process(delta: float) -> void:
 		elif not u.is_hero:
 			army.append(u)
 	_manage_workers(workers)
+	_build(workers)
+	_level_hero()
 	_train(workers.size(), army.size())
 	_manage_army(army)
+
+
+## Glory statues are the computer's steady glory income - without them it could never pay
+## for hero levels or upgrades.
+func _build(workers: Array[Unit]) -> void:
+	var statues := 0
+	for b in Building.all_buildings:
+		if b.team == team and "statue" in b.definition_id:
+			statues += 1
+	if statues >= 2 or workers.is_empty():
+		return
+	var civ := GameState.civ(team)
+	for entry in civ.get("builds", []):
+		if not "statue" in str(entry.get("building", "")):
+			continue
+		var id: String = entry["building"]
+		var cost: Dictionary = Assets.unit_def(id).get("cost", {})
+		if not GameState.can_afford(team, cost):
+			return
+		var home := _home()
+		if home == Vector3.INF:
+			return
+		var spot := home + Vector3(randf_range(-26, 26), 0, randf_range(10, 22) * (1 if home.z < 0 else -1))
+		var building := Building.create(id, team, true)
+		building.position = spot
+		get_parent().add_child(building)
+		if not _placement_free(building):
+			building.queue_free()
+			return
+		if not GameState.spend(team, cost):
+			building.queue_free()
+			return
+		get_parent().call("rebuild_navigation")
+		var builders := 0
+		for w in workers:
+			if builders >= 2:
+				break
+			w.order_build(building)
+			builders += 1
+		return
+
+
+func _placement_free(candidate: Building) -> bool:
+	var rect := Building.compute_footprint(candidate).grow(2.0)
+	for b in Building.all_buildings:
+		if b != candidate and b.footprint.intersects(rect):
+			return false
+	for r in ResourceNode.all_nodes:
+		if rect.has_point(Vector2(r.global_position.x, r.global_position.z)):
+			return false
+	return true
+
+
+## Spend glory: first on the hero's level (it gates everything else), then on upgrades.
+func _level_hero() -> void:
+	for unit in Unit.all_units:
+		if unit.team != team or not unit.is_hero:
+			continue
+		var levels: Array = Assets.unit_def(unit.definition_id).get("hero_levels", [])
+		for entry in levels:
+			var level := int(entry.get("hero_level", 0))
+			if level != GameState.hero_level(team) + 1:
+				continue
+			if GameState.spend(team, entry.get("cost", {})):
+				GameState.set_hero_level(team, level)
+				GameState.complete_research(team, int(entry.get("id", 0)))
+			return
+		return
 
 
 func _manage_workers(workers: Array[Unit]) -> void:
@@ -73,6 +143,11 @@ func _train(worker_count: int, army_count: int) -> void:
 			if options.is_empty():
 				continue
 			choice = options.pick_random()["unit"]
+		# Spend surplus gold on upgrades so the computer's army levels up as well.
+		var researches := building.available_upgrades()
+		if not researches.is_empty() and GameState.player(team).get("glory", 0) > 60:
+			if building.enqueue_research(researches[0]):
+				continue
 		if choice != "" and (building.is_drop_site or army_count < 40):
 			building.enqueue(choice)
 

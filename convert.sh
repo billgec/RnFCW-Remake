@@ -20,7 +20,8 @@ java -cp "$CLASSES" com.rnf.tools.Convert texture "$DATA_SSA" "$OUT" \
   'textures\trn_ybasegrasst.dds' 'textures\trn_ybasegrassdirtt.dds' 'textures\trn_ybasedirt.dds'
 
 java -cp "$CLASSES" com.rnf.tools.ExportCiv "$DATA_SSA" "$OUT" Greek "A - Cit - Citizen (Greek)" \
-  "A - b  Settlement (MP) (Tent) (Greek)" "A - b  Town Center (MP) (Greek)" "A - b  Barracks (MP) (Greek)" \
+  "A - Inf00 - Alexander Melee - RTS mode (Greek)" \
+  "A - b  Statue Glory (Greek)" "A - b  Settlement (MP) (Tent) (Greek)" "A - b  Town Center (MP) (Greek)" "A - b  Barracks (MP) (Greek)" \
   "A - b  Archery Range (MP) (Greek)" "A - b  Stable (MP) (Greek)" "A - b  Spartan Academy (MP) (Greek)" \
   "A - b  Tower 1x1 (Greek)" "A - b  Market (Greek)" "A - b  Government Center (MP) (Greek)"
 java -cp "$CLASSES" com.rnf.tools.ExportPointers "$DATA_SSA" "$OUT"

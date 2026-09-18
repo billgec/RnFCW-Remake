@@ -90,6 +90,7 @@ public final class UnitStats {
         m.put("name", name != null && !name.isBlank() ? name : e.devName());
         m.put("dev_name", e.devName());
         m.put("record", e.recordIndex());
+        m.put("line", line(e.devName()));
         m.put("hit_points", e.hitPoints());
         m.put("damage", e.attackDamage());
         m.put("attack_type", bb.getInt(base + 192));
@@ -110,6 +111,12 @@ public final class UnitStats {
         return name != null && !name.isBlank() ? name : e.devName();
     }
 
+    /** Player-facing string from Language2.dll, or null. */
+    public String stringById(int id) {
+        return names == null ? null : names.get(id);
+    }
+
+
     public DbObjects objects() {
         return objects;
     }
@@ -117,6 +124,19 @@ public final class UnitStats {
     public DbGraphics graphics() {
         return graphics;
     }
+
+    /**
+     * Identifies the upgrade line a unit belongs to: the developer name without its
+     * category prefix and level marker, e.g. "A - Inf01 - Sword Infantry (Level 1 Greek)"
+     * and its level 3 sibling both become "sword infantry (greek)".
+     */
+    public static String line(String devName) {
+        return devName.replaceAll("^A - [A-Za-z]+[0-9]*[a-z]? - ", "")
+                .replaceAll("\\(Level [0-9]+ ", "(")
+                .replaceAll("\\(level [0-9]+ ", "(")
+                .replaceAll("\\s+", " ").trim().toLowerCase();
+    }
+
 
     private static double round(double v) {
         return Math.round(v * 100.0) / 100.0;

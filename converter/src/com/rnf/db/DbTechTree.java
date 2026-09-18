@@ -50,9 +50,24 @@ public final class DbTechTree {
     private static final int ENTRY_WORDS = 44;
     private static final int NAME_BYTES_BEFORE = 100;
 
-    /** {@code prerequisiteId == 0} means "no prerequisite - available immediately". */
+    private static final int APPENDIX = 348;
+
+    /**
+     * One tech tree entry - a trainable unit, a building or a research.
+     *
+     * <p>{@code prerequisiteId == 0} means "no prerequisite - available immediately";
+     * otherwise it names the research that unlocks this entry. {@code level} is
+     * {@code [1] - 4}, i.e. 1..5 for the five levels every unit line has (below 1 are
+     * scenery and cut-scene objects). The two appendix lists are only meaningful for
+     * research entries - an entry is a research when no object carries its id. Research
+     * entries carry an appendix at
+     * {@link #APPENDIX}: a count-prefixed list of the {@code dbobjects} record indices of
+     * the buildings that offer them, followed by a count-prefixed list of what they unlock
+     * (unit object ids and follow-up research ids).
+     */
     public record Entry(int id, String name, int kind, int prerequisiteId, int buildTimeTicks,
-                        int cost, int objectRecordIndex, int buttonIndex, int fileOffset, int wood) {}
+                        int cost, int objectRecordIndex, int buttonIndex, int fileOffset, int wood,
+                        int level, int nameStringId, int[] offeredByBuildings, int[] unlocks) {}
 
     private final Map<Integer, Entry> byId;
 
@@ -82,9 +97,30 @@ public final class DbTechTree {
                     buf.getInt(off + 15 * 4),
                     buf.getInt(off + 16 * 4),
                     off,
-                    buf.getInt(off + 5 * 4)));
+                    buf.getInt(off + 5 * 4),
+                    buf.getInt(off + 4) - 4,
+                    buf.getInt(off + 18 * 4),
+                    readList(buf, off + APPENDIX),
+                    readList(buf, afterList(buf, off + APPENDIX))));
         }
         return new DbTechTree(byId);
+    }
+
+    /** Count-prefixed u32 list, empty when the count is implausible. */
+    private static int[] readList(ByteBuffer buf, int offset) {
+        if (offset < 0 || offset + 4 > buf.capacity()) return new int[0];
+        int count = buf.getInt(offset);
+        if (count < 0 || count > 64 || offset + 4 + count * 4 > buf.capacity()) return new int[0];
+        int[] values = new int[count];
+        for (int i = 0; i < count; i++) values[i] = buf.getInt(offset + 4 + i * 4);
+        return values;
+    }
+
+    private static int afterList(ByteBuffer buf, int offset) {
+        if (offset < 0 || offset + 4 > buf.capacity()) return -1;
+        int count = buf.getInt(offset);
+        if (count < 0 || count > 64) return -1;
+        return offset + 4 + count * 4;
     }
 
     private static String nameBefore(byte[] data, int entryOffset) {

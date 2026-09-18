@@ -20,7 +20,7 @@ import java.util.Map;
  * Exports one civilization: the citizen's buildable structures and, per building, what it
  * trains - converting every involved model, skin and button icon on the way.
  *
- * <pre>ExportCiv &lt;data.ssa&gt; &lt;outRoot&gt; &lt;Civ&gt; "&lt;citizen dev name&gt;" "&lt;building dev name&gt;"...</pre>
+ * <pre>ExportCiv &lt;data.ssa&gt; &lt;outRoot&gt; &lt;Civ&gt; "&lt;citizen&gt;" "&lt;hero&gt;" "&lt;building&gt;"...</pre>
  *
  * Writes {@code civs/<civ>.json}: {@code builds} (what citizens can found, in menu order,
  * with the building each one requires) and {@code buildings} (name, trains).
@@ -42,9 +42,10 @@ public final class ExportCiv {
             DbTechTree tech = DbTechTree.parse(archive.readFile("db\\dbtechtree.dat"));
 
             DbObjects.Entry citizen = exact(objects, args[3]);
+            String heroName = args.length > 4 ? args[4] : null;
             List<DbObjects.Entry> chosen = new ArrayList<>();
             Map<Integer, String> udfByObjectId = new HashMap<>();
-            for (int i = 4; i < args.length; i++) {
+            for (int i = 5; i < args.length; i++) {
                 DbObjects.Entry b = exact(objects, args[i]);
                 if (b == null) {
                     System.err.println("building not found: " + args[i]);
@@ -64,13 +65,23 @@ public final class ExportCiv {
                 String buildingUdf = definition(graphics, building);
                 List<Object> trains = new ArrayList<>();
                 List<Object> upgrades = new ArrayList<>();
-                for (CommandPanel.Cell cell : CommandPanel.build(building, civ, objects, buttons, tech)) {
+                for (CommandPanel.Cell cell : CommandPanel.build(building, civ, objects, buttons, tech, true)) {
                     if (cell == null) continue;
                     DbTechTree.Entry t = tech.byId(cell.id());
                     String icon = icon(archive, outRoot, cell.iconPath());
                     if (cell.kind() == CommandPanel.Kind.UPGRADE) {
-                        upgrades.add(Map.of("id", cell.id(), "name", cell.name(), "slot", cell.index(),
-                                "icon", icon == null ? "" : icon, "cost", cost(t)));
+                        Map<String, Object> upgrade = new LinkedHashMap<>();
+                        upgrade.put("id", cell.id());
+                        String label = t == null ? null : stats.stringById(t.nameStringId());
+                        upgrade.put("name", label != null && !label.isBlank() ? label : readableUpgrade(cell.name()));
+                        upgrade.put("dev_name", cell.name());
+                        upgrade.put("slot", cell.index());
+                        upgrade.put("level", t == null ? 0 : t.level());
+                        upgrade.put("requires_research", t == null ? 0 : t.prerequisiteId());
+                        upgrade.put("unlocks", t == null ? new int[0] : t.unlocks());
+                        upgrade.put("icon", icon == null ? "" : icon);
+                        upgrade.put("cost", cost(t, true));
+                        upgrades.add(upgrade);
                         continue;
                     }
                     DbObjects.Entry unit = objects.byObjectId(cell.id());
@@ -81,7 +92,9 @@ public final class ExportCiv {
                             || udf.startsWith("bld_") || udf.startsWith("wall_")) continue;
                     Map<String, Object> extra = new LinkedHashMap<>();
                     extra.put("icon", icon);
-                    extra.put("cost", cost(t));
+                    extra.put("cost", cost(t, false));
+                    extra.put("level", t == null ? 1 : Math.max(1, t.level()));
+                    extra.put("requires_research", t == null ? 0 : t.prerequisiteId());
                     try {
                         Convert.unit(archive, outRoot, udf, unit, extra);
                     } catch (Exception e) {
@@ -92,6 +105,9 @@ public final class ExportCiv {
                     entry.put("unit", udf);
                     entry.put("name", stats.displayName(unit));
                     entry.put("slot", cell.index());
+                    entry.put("level", t == null ? 1 : Math.max(1, t.level()));
+                    entry.put("line", com.rnf.db.UnitStats.line(unit.devName()));
+                    entry.put("requires_research", t == null ? 0 : t.prerequisiteId());
                     trains.add(entry);
                 }
                 DbTechTree.Entry bt = tech.byId(building.objectId());
@@ -102,7 +118,7 @@ public final class ExportCiv {
                     if (requires == null && pre != null) requires = udfByDevBase.get(devBase(pre.devName()));
                 }
                 Map<String, Object> extra = new LinkedHashMap<>();
-                extra.put("cost", cost(bt));
+                extra.put("cost", cost(bt, false));
                 DbButtons.Button button = buttons.get(building.buttonIndex());
                 if (button != null && !button.iconPath().isEmpty()) extra.put("icon", icon(archive, outRoot, button.iconPath()));
                 extra.put("trains", trains);
@@ -114,7 +130,8 @@ public final class ExportCiv {
                     System.err.println("FAILED building " + buildingUdf + ": " + e);
                     continue;
                 }
-                buildings.put(buildingUdf, Map.of("name", stats.displayName(building), "trains", trains));
+                buildings.put(buildingUdf, Map.of("name", stats.displayName(building),
+                        "trains", trains, "upgrades", upgrades));
                 Map<String, Object> b = new LinkedHashMap<>();
                 b.put("building", buildingUdf);
                 b.put("name", stats.displayName(building));
@@ -122,8 +139,43 @@ public final class ExportCiv {
                 b.put("requires", requires);
                 builds.add(b);
             }
+            // The hero carries the epoch techs ("ACTION - LEVEL 02" ...) in its own build
+            // list: levelling the hero with glory is what unlocks the next tier of upgrades,
+            // buildings and siege units.
+            Map<String, Object> hero = new LinkedHashMap<>();
+            DbObjects.Entry heroRecord = heroName == null ? null : exact(objects, heroName);
+            if (heroRecord != null) {
+                String heroUdf = definition(graphics, heroRecord);
+                List<Object> levels = new ArrayList<>();
+                for (int id : heroRecord.buildList()) {
+                    DbTechTree.Entry t = tech.byId(id);
+                    if (t == null || objects.byObjectId(id) != null) continue;
+                    int level = heroLevel(t.name());
+                    if (level <= 0) continue;
+                    Map<String, Object> entry = new LinkedHashMap<>();
+                    entry.put("id", id);
+                    entry.put("hero_level", level);
+                    DbButtons.Button heroButton = buttons.get(t.buttonIndex());
+                    entry.put("icon", heroButton == null ? "" : icon(archive, outRoot, heroButton.iconPath()));
+                    entry.put("name", "Level " + level);
+                    entry.put("requires_research", t.prerequisiteId());
+                    entry.put("cost", cost(t, true));
+                    entry.put("unlocks", t.unlocks());
+                    levels.add(entry);
+                }
+                levels.sort((x, y) -> Integer.compare((int) ((Map<?, ?>) x).get("hero_level"),
+                        (int) ((Map<?, ?>) y).get("hero_level")));
+                Map<String, Object> extra = new LinkedHashMap<>();
+                extra.put("hero_levels", levels);
+                Convert.unit(archive, outRoot, heroUdf, heroRecord, extra);
+                hero.put("unit", heroUdf);
+                hero.put("name", stats.displayName(heroRecord));
+                hero.put("levels", levels);
+            }
+
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("civ", civ);
+            out.put("hero", hero);
             out.put("citizen", citizen == null ? null : definition(graphics, citizen));
             out.put("builds", builds);
             out.put("buildings", buildings);
@@ -132,6 +184,18 @@ public final class ExportCiv {
             Files.writeString(json, Json.pretty(out));
             System.out.println("wrote " + json);
         }
+    }
+
+    /** "ACTION - LEVEL 02 (Epoch tech)" -> 2, or 0 when the name is not a hero level. */
+    private static int heroLevel(String name) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("LEVEL\\s+(\\d+)").matcher(name);
+        return m.find() ? Integer.parseInt(m.group(1)) : 0;
+    }
+
+    /** Fallback label when Language2.dll has no string: "UP - Inf Sword 3 (Greek)" -> "Inf Sword 3". */
+    private static String readableUpgrade(String devName) {
+        return devName.replaceAll("^A - ", "").replaceAll("^UP - ", "")
+                .replaceAll("\\((Greek|Persian|Egypt|Rome)\\)", "").replaceAll("\\s+", " ").trim();
     }
 
     /** "A - b  Barracks (MP) (Greek)" -> "barracks (greek)" - variant markers removed. */
@@ -152,14 +216,25 @@ public final class ExportCiv {
         return g == null || g.definitionName().isEmpty() ? null : g.definitionName().toLowerCase();
     }
 
-    private static Map<String, Object> cost(DbTechTree.Entry t) {
+    /**
+     * Units and buildings are paid for in gold and wood; researches (unit upgrades, hero
+     * levels) are paid for in glory - the resource the original hands out for kills, own
+     * losses, buildings and glory statues.
+     */
+    private static Map<String, Object> cost(DbTechTree.Entry t, boolean research) {
         Map<String, Object> m = new LinkedHashMap<>();
         if (t == null) {
-            m.put("gold", 0); m.put("wood", 0); m.put("time_s", 10.0);
+            m.put(research ? "glory" : "gold", 0);
+            if (!research) m.put("wood", 0);
+            m.put("time_s", 10.0);
             return m;
         }
-        m.put("gold", t.cost() / 1000);
-        m.put("wood", t.wood());
+        if (research) {
+            m.put("glory", t.cost() / 1000);
+        } else {
+            m.put("gold", t.cost() / 1000);
+            m.put("wood", t.wood());
+        }
         m.put("time_s", t.buildTimeTicks() / 4.0);
         return m;
     }

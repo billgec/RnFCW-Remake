@@ -41,6 +41,17 @@ export RNF_DATA_SSA="/path/to/Rise And Fall/Data/data.ssa"   # optional, see con
 | Hold Option/Alt | show hit point bars |
 | Space · + / − · speed buttons | pause · game speed (0.5x to 3x, any time) |
 | Buttons bottom right | buildings: train units · citizens: found buildings (left click places, right click/Esc cancels) |
+| H, or the hero's button | enter hero mode · Esc or H leaves it |
+
+### Hero mode
+
+| Input | Action |
+|---|---|
+| WASD | run (the hero always faces the camera and strafes sideways) |
+| Mouse | look around · wheel: camera distance |
+| Left click | attack - repeated clicks chain into a combo |
+| Right click | raise the shield: much less damage taken, slower movement |
+| Space | special attack: sweeps everyone around the hero, then needs to recharge |
 
 ## What works
 
@@ -51,14 +62,22 @@ export RNF_DATA_SSA="/path/to/Rise And Fall/Data/data.ssa"   # optional, see con
 * Combat with the original values (hit points, damage, range, sight, rate, speed), melee and
   projectiles, death animations, automatic target acquisition
 * Class bonuses via `game/data/bonuses.json` (spears beat cavalry, …), freely editable
-* Economy: citizens gather gold and wood, build and repair; training uses the original build
-  lists, icons, costs and times; soldiers are trained in groups (3+, one more per settlement)
+* Economy with all three of the original's resources: citizens gather gold and wood, glory
+  comes from kills, own losses, finished buildings and glory statues; training uses the
+  original build lists, icons, costs and times; soldiers come in groups (3+, one more per
+  settlement, shown in the resource bar)
+* Hero levels and upgrades exactly as in the original: the hero spends glory to level up,
+  which gates everything else; unit upgrades (researched in the building's top row, paid for
+  in glory) then unlock the next of the five levels of that unit line, and units already in
+  the field are replaced by their veteran version
 * Groups of 9+ identical soldiers form a formation marked by the original banner
 * A computer opponent that gathers, trains and attacks in waves
 * The original mouse pointers, switching with context (attack, wood, gold, build, repair, …)
+* Hero mode: take direct third-person control of the hero, with the original's third-person
+  animation set (directional runs, shield, combo swings, special attack); the soldiers around
+  him become a retinue and follow him, and a fallen hero returns at his town center
 
-Not there yet: upgrades, armour values, hero mode, terrain/maps, the other three
-civilizations, a nicer HUD.
+Not there yet: armour values, terrain/maps, the other three civilizations.
 
 ## Layout
 
@@ -88,5 +107,7 @@ pipeline in `converter/src/com/rnf/`.
 
 * Trees and rocks: *Stylized Nature MegaKit* by [Quaternius](https://quaternius.com),
   CC0 (license file in `game/assets/nature/`).
+* Interface icons (resources, game speed): [game-icons.net](https://game-icons.net),
+  CC BY 3.0 - see `game/assets/icons/NOTICE.md` for the individual authors.
 * Everything under `game/assets/original/` is generated from your own copy of the original
   game and is **not** distributed here. *Rise & Fall: Civilizations at War* is © Midway.

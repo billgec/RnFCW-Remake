@@ -18,6 +18,7 @@ var team := 0
 var max_hit_points := 1000.0
 var hit_points := 1000.0
 var trains: Array = []
+var upgrades: Array = []
 var family := "Building"
 var damage := 0.0
 var attack_range := 0.0
@@ -49,6 +50,8 @@ var _bar: Node3D
 var _dead := false
 var _flag: Node3D
 var _height := 4.0
+var _glory_given := false
+var _statue_timer := 0.0
 
 static var all_buildings: Array[Building] = []
 
@@ -71,6 +74,7 @@ func _ready() -> void:
 	display_name = stats.get("name", definition_id)
 	max_hit_points = float(stats.get("hit_points", 1000))
 	trains = def.get("trains", [])
+	upgrades = def.get("upgrades", [])
 	family = stats.get("family", "Building")
 	damage = float(stats.get("damage", 0))
 	attack_range = float(stats.get("range_m", 0))
@@ -128,6 +132,39 @@ func unit_def_for(unit_id: String) -> Dictionary:
 	return Assets.unit_def(unit_id)
 
 
+## Trainable units right now: those whose research is done, and per upgrade line only the
+## highest level available.
+func available_trains() -> Array:
+	var best := {}
+	for entry in trains:
+		if not GameState.has_research(team, int(entry.get("requires_research", 0))):
+			continue
+		if not GameState.level_reached(team, int(entry.get("level", 1))):
+			continue
+		var line: String = entry.get("line", entry["unit"])
+		if not best.has(line) or int(entry.get("level", 1)) > int(best[line].get("level", 1)):
+			best[line] = entry
+	var result := best.values()
+	result.sort_custom(func(a, b): return int(a.get("slot", 99)) < int(b.get("slot", 99)))
+	return result
+
+
+## Researches this building offers right now: prerequisite done, not yet researched.
+func available_upgrades() -> Array:
+	var result := []
+	for entry in upgrades:
+		var id := int(entry.get("id", 0))
+		if id == 0 or GameState.has_research(team, id):
+			continue
+		if not GameState.has_research(team, int(entry.get("requires_research", 0))):
+			continue
+		if not GameState.level_reached(team, int(entry.get("level", 1))):
+			continue
+		result.append(entry)
+	result.sort_custom(func(a, b): return int(a.get("level", 0)) < int(b.get("level", 0)))
+	return result
+
+
 ## How many units one training order produces: soldiers come as a group (the original
 ## trains whole formations), citizens and siege pieces one by one.
 func batch_size(unit_id: String) -> int:
@@ -135,6 +172,24 @@ func batch_size(unit_id: String) -> int:
 		if token in unit_id:
 			return 1
 	return GameState.batch_size(team)
+
+
+## Adds a research to the queue (paying for it).
+func enqueue_research(entry: Dictionary) -> bool:
+	if not is_complete() or queue.size() >= 8:
+		return false
+	for queued in queue:
+		if queued.get("research", 0) == int(entry["id"]):
+			return false
+	var cost: Dictionary = entry.get("cost", {})
+	if not GameState.spend(team, cost):
+		return false
+	# Research entries carry no build time in the data; scale it with the level instead.
+	var time := maxf(float(cost.get("time_s", 0.0)), 15.0 + 5.0 * int(entry.get("level", 1)))
+	queue.append({"research": int(entry["id"]), "name": entry.get("name", "Aufwertung"),
+		"icon": entry.get("icon", ""), "cost": cost, "time": time, "elapsed": 0.0})
+	queue_changed.emit(self)
+	return true
 
 
 ## Adds a training order to the queue (paying for the whole batch).
@@ -196,12 +251,21 @@ func _process(delta: float) -> void:
 		return
 	if damage > 0.0 and attack_range > 1.0:
 		_shoot(delta)
+	if "statue" in definition_id:
+		_statue_timer -= delta
+		if _statue_timer <= 0.0:
+			_statue_timer = float(GameState.glory_rates().get("statue_interval_s", 12.0))
+			GameState.add_resource(team, "glory", int(GameState.glory_rates().get("statue_amount", 1)))
 	if queue.is_empty():
 		return
 	var entry: Dictionary = queue[0]
 	entry["elapsed"] += delta
 	if entry["elapsed"] >= entry["time"]:
 		queue.pop_front()
+		if entry.has("research"):
+			GameState.complete_research(team, int(entry["research"]), str(entry.get("name", "")))
+			queue_changed.emit(self)
+			return
 		var count := int(entry.get("count", 1))
 		for i in count:
 			_spawn(entry["unit"])

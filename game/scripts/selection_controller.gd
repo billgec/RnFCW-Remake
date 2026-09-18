@@ -159,7 +159,7 @@ func _update_cursor() -> void:
 		Cursors.set_pointer("Build")
 		return
 	var mouse := get_viewport().get_mouse_position()
-	if get_viewport().get_visible_rect().size.y - mouse.y < 176.0:
+	if get_viewport().get_visible_rect().size.y - mouse.y < 178.0:
 		Cursors.set_pointer("Normal")  # over the HUD panel
 		return
 	var units := selected_units()
