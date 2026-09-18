@@ -42,6 +42,7 @@ export RNF_DATA_SSA="/path/to/Rise And Fall/Data/data.ssa"   # optional, see con
 | Space · + / − · speed buttons | pause · game speed (0.5x to 3x, any time) |
 | Buttons bottom right | buildings: train units · citizens: found buildings (left click places, right click/Esc cancels) |
 | H, or the hero's button | enter hero mode · Esc or H leaves it |
+| F5 | graphics quality: low · medium · high (saved) |
 
 ### Hero mode
 
@@ -78,6 +79,23 @@ export RNF_DATA_SSA="/path/to/Rise And Fall/Data/data.ssa"   # optional, see con
   him become a retinue and follow him, and a fallen hero returns at his town center
 
 Not there yet: armour values, terrain/maps, the other three civilizations.
+
+## Performance
+
+The game draws at the window's real resolution, which on a high density display is around
+three times the 1920x1080 the project asks for. At that size the screen space effects cost
+far more than the simulation does - measured with 60 units on screen: units, pathing and
+combat together take about 3 ms per frame, while screen space indirect lighting alone took
+about 50 ms. Quality is therefore a real setting, cycled with **F5** and remembered:
+
+| Level | Effects | Measured |
+|---|---|---|
+| high | indirect lighting, ambient occlusion, glow, 4x MSAA, 8192 shadows | ~20 fps |
+| medium (default) | ambient occlusion, glow, 2x MSAA, 4096 shadows | ~35 fps |
+| low | no screen space effects, FXAA, 2048 shadows, 80% render scale | 60 fps (capped) |
+
+Run with `-- --perf=2` to print the frame budget (frames per second, script, physics and
+render time, draw calls) every two seconds.
 
 ## Layout
 

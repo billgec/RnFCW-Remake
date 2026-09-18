@@ -8,8 +8,9 @@ extends Node3D
 ##   --cam=<x>,<z>,<yaw°>,<distance>,<pitch°>   initial camera placement
 ##   --demo-move=<x>,<z>     select the blue soldiers and attack-move there
 ##   --demo-select=<what>    army | workers | barracks | towncenter | heromode
-##   --hero-action=<what>    with --demo-select=heromode: run | attack | special
+##   --hero-action=<what>    with --demo-select=heromode: run | attack | special | duel
 ##   --show-health=1         always show hit point bars
+##   --perf=<seconds>        log the frame budget every few seconds
 ##   --timescale=<f>         speed up the simulation (e.g. to watch the computer player)
 
 const TERRAIN_SHADER := preload("res://shaders/terrain.gdshader")
@@ -77,6 +78,8 @@ func _ready() -> void:
 	GameState.match_over.connect(func(_w): GameState.set_speed(1.0))
 	if _args.has("log"):
 		_log_loop()
+	if _args.has("perf"):
+		_perf_loop()
 	if _args.has("snapshot"):
 		GameState.message.connect(func(t): print("[%.0fs] %s" % [Time.get_ticks_msec() / 1000.0 * Engine.time_scale, t]))
 
@@ -365,6 +368,24 @@ func _hero_duel(mode: Node) -> void:
 	print("special: %d enemies hit for %.0f damage in total" % [hit, total])
 
 
+## Frame budget, every few seconds: where the time goes and how much of it is the GPU.
+func _perf_loop() -> void:
+	var viewport := get_viewport().get_viewport_rid()
+	RenderingServer.viewport_set_measure_render_time(viewport, true)
+	var interval := maxf(float(_args["perf"]), 1.0)
+	while true:
+		await get_tree().create_timer(interval).timeout
+		var units := Unit.all_units.size()
+		print("[perf] %5.1f fps | script %.2f ms | physics %.2f ms | render cpu %.2f ms gpu %.2f ms | %d draw calls | %d units %d nodes" % [
+			Performance.get_monitor(Performance.TIME_FPS),
+			Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0,
+			Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0,
+			RenderingServer.viewport_get_measured_render_time_cpu(viewport),
+			RenderingServer.viewport_get_measured_render_time_gpu(viewport),
+			Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),
+			units, Performance.get_monitor(Performance.OBJECT_NODE_COUNT)])
+
+
 func _log_loop() -> void:
 	var game_time := 0.0
 	while true:
@@ -437,11 +458,6 @@ func _build_environment() -> void:
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	env.tonemap_mode = Environment.TONE_MAPPER_AGX
 	env.tonemap_exposure = 1.05
-	env.ssao_enabled = true
-	env.ssao_radius = 1.2
-	env.ssao_intensity = 1.6
-	env.ssil_enabled = true
-	env.glow_enabled = true
 	env.glow_intensity = 0.35
 	env.glow_bloom = 0.05
 	env.fog_enabled = true
@@ -453,13 +469,14 @@ func _build_environment() -> void:
 	var world_env := WorldEnvironment.new()
 	world_env.environment = env
 	add_child(world_env)
+	Graphics.use(env)  # ambient occlusion, indirect light, glow and anti aliasing per level
 
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-48, -35, 0)
 	sun.light_color = Color(1.0, 0.95, 0.86)
 	sun.light_energy = 1.35
 	sun.shadow_enabled = true
-	sun.directional_shadow_max_distance = 180.0
+	sun.directional_shadow_max_distance = 140.0
 	sun.shadow_blur = 1.2
 	add_child(sun)
 

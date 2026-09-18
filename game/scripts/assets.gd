@@ -8,6 +8,7 @@ const ORIGINAL := "res://assets/original/"
 const UNIT_SHADER := preload("res://shaders/unit.gdshader")
 
 var _units: Dictionary = {}
+var _materials: Dictionary = {}
 
 
 func resolve(relative_path: String) -> String:
@@ -38,10 +39,16 @@ func spawn_unit(id: String, player_color: Color) -> Node3D:
 	var node: Node3D = scene.instantiate()
 	node.name = id
 	if def.get("texture") != null:
-		var material := ShaderMaterial.new()
-		material.shader = UNIT_SHADER
-		material.set_shader_parameter("skin", load(resolve(def["texture"])))
-		material.set_shader_parameter("player_color", player_color)
+		# One material per unit type and colour, shared by every instance: a material of its
+		# own for each of a hundred soldiers costs memory and draw call setup for nothing.
+		var key := "%s|%s" % [id, player_color.to_html(false)]
+		var material: ShaderMaterial = _materials.get(key)
+		if material == null:
+			material = ShaderMaterial.new()
+			material.shader = UNIT_SHADER
+			material.set_shader_parameter("skin", load(resolve(def["texture"])))
+			material.set_shader_parameter("player_color", player_color)
+			_materials[key] = material
 		for mesh in node.find_children("*", "MeshInstance3D", true, false):
 			mesh.material_override = material
 			mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON

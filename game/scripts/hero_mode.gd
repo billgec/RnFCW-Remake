@@ -16,7 +16,7 @@ signal mode_changed(active: bool)
 const SPEED_SCALE := 2.2        # the hero runs in hero mode instead of marching
 const BLOCK_SPEED := 0.45
 const BLOCK_REDUCTION := 0.75
-const ATTACK_INTERVAL := 0.5
+const ATTACK_SPEED := 1.2
 const COMBO_WINDOW := 1.1
 const ATTACK_ARC := 0.35        # dot product, about a 140 degree swing
 const ATTACK_REACH := 1.8
@@ -36,7 +36,9 @@ var active := false
 
 var _hero: Unit
 var _retinue: Array[Unit] = []
-var _attack_timer := 0.0
+var _attack_left := 0.0   # seconds the current swing or recovery still runs
+var _recovering := false  # the swing is done, the sword is going back to guard
+var _queued := false      # clicked during a swing: chain the next hit onto it
 var _combo := 0
 var _combo_timer := 0.0
 var _swing := -1.0
@@ -91,7 +93,9 @@ func enter() -> bool:
 	if camera_rig:
 		camera_rig.begin_follow(_hero)
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
-	_attack_timer = 0.0
+	_attack_left = 0.0
+	_recovering = false
+	_queued = false
 	_swing = -1.0
 	_special_left = 0.0
 	_combo = 0
@@ -171,13 +175,14 @@ func _process(delta: float) -> void:
 	if hero() == null or GameState.over:
 		leave()
 		return
-	_attack_timer = maxf(0.0, _attack_timer - delta)
 	_combo_timer = maxf(0.0, _combo_timer - delta)
 	_special_timer = maxf(0.0, _special_timer - delta)
 	if _swing >= 0.0:
 		_swing -= delta
 		if _swing < 0.0:
 			_land_swing()
+	if _attack_left > 0.0:
+		_advance_attack(delta)
 	if _special_left > 0.0:
 		_update_special(delta)
 	_update_movement(delta)
@@ -202,8 +207,11 @@ func _update_movement(delta: float) -> void:
 		var speed := _hero.move_speed * SPEED_SCALE * (BLOCK_SPEED if _blocking else 1.0)
 		var direction := (Basis(Vector3.UP, yaw) * Vector3(_move_input.x, 0.0, _move_input.y)).normalized()
 		_hero.step(direction * speed * delta)
-	if _swing >= 0.0 or _special_left > 0.0:
-		return  # an attack animation is running
+	if _recovering and (moving or _blocking):
+		_attack_left = 0.0  # moving on or raising the shield cuts the recovery short
+		_recovering = false
+	if _attack_left > 0.0 or _special_left > 0.0:
+		return  # let the attack animation play out
 	if moving:
 		_hero.play_animation(_move_anim(_blocking), 0.18, _hero.move_speed * SPEED_SCALE / 4.5)
 	else:
@@ -233,24 +241,54 @@ func _move_anim(blocking: bool) -> String:
 
 # --- fighting ---------------------------------------------------------------
 
+## A click starts a swing. Clicking again while one is running does not throw it away - it
+## is remembered and chained on as soon as the blade comes round, which is what makes the
+## combo read as one movement instead of a series of cut off swings.
 func _attack() -> void:
-	if _attack_timer > 0.0 or _special_left > 0.0 or hero() == null:
+	if hero() == null or _special_left > 0.0:
 		return
-	_attack_timer = ATTACK_INTERVAL
+	if _attack_left > 0.0:
+		if not _recovering:
+			_queued = true
+			return
+		_attack_left = 0.0  # a new hit cancels the recovery
+	_start_swing()
+
+
+func _start_swing() -> void:
 	_combo = (_combo % 2) + 1 if _combo_timer > 0.0 else 1
 	_combo_timer = COMBO_WINDOW
-	var length := _hero.play_animation(_attack_anim(), 0.08, 1.2, false)
-	_swing = maxf(length * 0.45, 0.05)
+	_queued = false
+	_recovering = false
+	_attack_left = _hero.play_animation(_attack_anim(false), 0.1, ATTACK_SPEED, false)
+	_swing = maxf(_attack_left * 0.45, 0.05)
+
+
+## The original splits every swing into a strike ("...s") and the recovery back to guard
+## ("...r"). The strike runs to its end, then either the next hit of the combo follows or
+## the hero lowers the sword again.
+func _advance_attack(delta: float) -> void:
+	_attack_left -= delta
+	if _attack_left > 0.0:
+		return
+	_attack_left = 0.0
+	if _queued:
+		_start_swing()
+	elif not _recovering:
+		_recovering = true
+		_attack_left = _hero.play_animation(_attack_anim(true), 0.12, ATTACK_SPEED, false)
+	else:
+		_recovering = false
 
 
 ## Attacking on the move uses the matching directional swing.
-func _attack_anim() -> String:
-	var base := "heross_3p_mpatck%d" % _combo
+func _attack_anim(recovery: bool) -> String:
+	var ending := "r" if recovery else "s"
 	if _move_input != Vector2.ZERO:
-		var candidate := "heross_3p_mrun%satck%ds" % [_direction_suffix(), _combo]
+		var candidate := "heross_3p_mrun%satck%d%s" % [_direction_suffix(), _combo, ending]
 		if _hero.has_animation(candidate):
 			return candidate
-	return base + "s"
+	return "heross_3p_mpatck%d%s" % [_combo, ending]
 
 
 ## The swing connects: everything in front of the hero within reach is hit.
@@ -273,6 +311,9 @@ func _special() -> void:
 	_special_left = _hero.play_animation("heross_3p_mspecial1", 0.1, 1.6, false)
 	_special_pulse = 0.0
 	_swing = -1.0
+	_attack_left = 0.0
+	_recovering = false
+	_queued = false
 
 
 ## The special attack sweeps everyone around the hero, several times while it lasts.
@@ -285,7 +326,6 @@ func _update_special(delta: float) -> void:
 			target.take_damage(_hero.damage_against(target) * SPECIAL_DAMAGE, _hero)
 	if _special_left <= 0.0:
 		_special_left = 0.0
-		_attack_timer = 0.2
 
 
 func _targets_near(reach: float) -> Array:

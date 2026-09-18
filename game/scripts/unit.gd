@@ -444,12 +444,17 @@ func play_animation(anim: String, blend := 0.15, speed := 1.0, loop := true) -> 
 	if not has_animation(anim):
 		return 0.0
 	var animation := _player.get_animation(anim)
-	animation.loop_mode = Animation.LOOP_LINEAR if loop else Animation.LOOP_NONE
+	var mode := Animation.LOOP_LINEAR if loop else Animation.LOOP_NONE
+	if animation.loop_mode != mode:
+		animation.loop_mode = mode
 	if loop:
 		if _player.current_animation != anim:
 			_player.play(anim, blend, speed)
 	else:
-		_player.stop()
+		# Only rewind when the same animation is asked for again - stopping first would
+		# throw away the cross fade from whatever was playing before.
+		if _player.current_animation == anim:
+			_player.stop()
 		_player.play(anim, blend, speed)
 	return animation.length / maxf(speed, 0.01)
 
@@ -631,7 +636,11 @@ func _play(role: String, blend := 0.2, speed := 1.0) -> float:
 	if _player == null or anim == "":
 		return 0.5
 	var animation := _player.get_animation(anim)
-	animation.loop_mode = Animation.LOOP_NONE if role in ["attack", "death", "dead"] else Animation.LOOP_LINEAR
+	var mode := Animation.LOOP_NONE if role in ["attack", "death", "dead"] else Animation.LOOP_LINEAR
+	# Only when it really changes: animations are shared between all units of a type, and
+	# writing to one invalidates the animation cache of every unit that uses it.
+	if animation.loop_mode != mode:
+		animation.loop_mode = mode
 	_player.play(anim, blend, speed)
 	return animation.length / speed
 
