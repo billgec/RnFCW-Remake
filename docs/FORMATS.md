@@ -352,6 +352,23 @@ object state, block 6 effects.
   them), referenced by `dbobjects +296`.
 * Graphics options are stored in the Windows registry, not in a config file.
 
+### Manned buildings and building upgrades
+
+A building's own build list (`dbobjects +908/+1212`) holds more than the units it trains:
+
+* The Greek tower's 13 entries are the **"Building Defender Archer"** at levels 1, 3 and 5
+  for all four civilizations - they use the ordinary archer definition (`men_yMarcher_02`,
+  400 hp, 30 damage) - plus tech **6255 "Tower 1x1 (Upgraded)"**, which rebuilds the tower
+  into `bld_yM1x1tower_01` for 60 gold and 150 wood. Town Center and Market carry the same
+  kind of entry (Town Defense, Bazaar), so an entry whose object is a building means "can be
+  rebuilt into", not "trains".
+* Where the defenders stand is in the models: nodes named `tag_defender_01`…`_04`. Two
+  shapes occur - on the towers they are **bones of the model's skeleton**, on the barracks
+  plain nodes that come in pairs (`tag_x_placement` sitting at the origin, with the real tag
+  as its child). The tag's own orientation is the animators', not an upright pose.
+* The same models carry `tag_attack` (where its missiles start), `tag_impact_*`,
+  `tag_weapon_mount_01` and `tag_scaffoldingM_*` for the siege scaffolding.
+
 ### The minimap
 
 Worth knowing if you rebuild one, because the assets give the recipe away:

@@ -7,7 +7,7 @@ extends Node3D
 ##   --frames=<n>            frames to wait before the snapshot (default 90)
 ##   --cam=<x>,<z>,<yaw°>,<distance>,<pitch°>   initial camera placement
 ##   --demo-move=<x>,<z>     select the blue soldiers and attack-move there
-##   --demo-select=<what>    army | workers | barracks | towncenter | heromode | halfbox | squads | rally | engage | minimap
+##   --demo-select=<what>    army | workers | barracks | towncenter | heromode | halfbox | squads | rally | engage | minimap | tower
 ##   --hero-action=<what>    with --demo-select=heromode: run | attack | special | duel
 ##   --show-health=1         always show hit point bars
 ##   --perf=<seconds>        log the frame budget every few seconds
@@ -321,6 +321,25 @@ func _demo_select() -> void:
 				map._look_at_point(local)
 				print("minimap %.2f/%.2f -> world %.0f,%.0f  camera %.0f,%.0f" % [spot.x, spot.y,
 					world.x, world.z, camera_rig.position.x, camera_rig.position.z])
+		"tower":
+			await get_tree().create_timer(0.8).timeout
+			for b in Building.all_buildings:
+				if b.team != 0 or b.definition_id != TOWER:
+					continue
+				b.selected = true
+				_selection.selected_building = b
+				print("tower: %d defenders, upgrades to %s" % [b._defenders.size(),
+					b.available_becomes().map(func(e): return "%s %s" % [e["name"], e["cost"]])])
+				GameState.player(0)["gold"] += 500
+				GameState.player(0)["wood"] += 500
+				b.enqueue_become(b.available_becomes()[0])
+				await get_tree().create_timer(float(b.queue[0]["time"]) + 1.0).timeout
+				for other in Building.all_buildings:
+					if other.team == 0 and "tower" in other.definition_id:
+						print("after: %s, %d hp, %d defenders, range %.0f m, damage %.0f" % [
+							other.definition_id, other.hit_points, other._defenders.size(),
+							other.attack_range, other.damage])
+				break
 		"halfbox":
 			# Drag a box over only the front half of a group: all of it must end up selected.
 			await get_tree().create_timer(1.2).timeout

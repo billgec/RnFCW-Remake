@@ -63,6 +63,10 @@ export RNF_DATA_SSA="/path/to/Rise And Fall/Data/data.ssa"   # optional, see con
 * RTS camera, selection, formation movement, navmesh pathing around buildings
 * Combat with the original values (hit points, damage, range, sight, rate, speed), melee and
   projectiles, death animations, automatic target acquisition
+* Towers are manned: four archers stand on the battlements where the original model's
+  `tag_defender` points are, and the one that looses the arrow turns and draws his bow
+* Buildings can be rebuilt into their stronger version, straight from the original data:
+  Tower to Improved Tower, Town Center to Town Defense, Market to Bazaar
 * Class bonuses via `game/data/bonuses.json` (spears beat cavalry, …), freely editable
 * Economy with all three of the original's resources: citizens gather gold and wood, glory
   comes from kills, own losses, finished buildings and glory statues; training uses the

@@ -65,6 +65,7 @@ public final class ExportCiv {
                 String buildingUdf = definition(graphics, building);
                 List<Object> trains = new ArrayList<>();
                 List<Object> upgrades = new ArrayList<>();
+                List<Object> becomes = new ArrayList<>();
                 for (CommandPanel.Cell cell : CommandPanel.build(building, civ, objects, buttons, tech, true)) {
                     if (cell == null) continue;
                     DbTechTree.Entry t = tech.byId(cell.id());
@@ -86,10 +87,32 @@ public final class ExportCiv {
                     }
                     DbObjects.Entry unit = objects.byObjectId(cell.id());
                     String udf = definition(graphics, unit);
-                    // Buildings sometimes list an upgraded building (Improved Tower, Bazaar)
-                    // in the same panel - those are not trainable units.
-                    if (udf == null || udfByObjectId.containsValue(udf)
-                            || udf.startsWith("bld_") || udf.startsWith("wall_")) continue;
+                    if (udf == null) continue;
+                    // A building in another building's panel is not a trainable unit: it is
+                    // what this one can be rebuilt into (Improved Tower, Bazaar).
+                    if (udf.startsWith("bld_") || udf.startsWith("wall_")) {
+                        if (udf.equals(buildingUdf)) continue;
+                        Map<String, Object> into = new LinkedHashMap<>();
+                        into.put("cost", cost(t, false));
+                        into.put("icon", icon);
+                        try {
+                            Convert.unit(archive, outRoot, udf, unit, into);
+                        } catch (Exception e) {
+                            System.err.println("FAILED building upgrade " + udf + ": " + e);
+                            continue;
+                        }
+                        Map<String, Object> step = new LinkedHashMap<>();
+                        step.put("building", udf);
+                        step.put("name", stats.displayName(unit));
+                        step.put("slot", cell.index());
+                        step.put("level", t == null ? 1 : Math.max(1, t.level()));
+                        step.put("requires_research", t == null ? 0 : t.prerequisiteId());
+                        step.put("icon", icon == null ? "" : icon);
+                        step.put("cost", cost(t, false));
+                        becomes.add(step);
+                        continue;
+                    }
+                    if (udfByObjectId.containsValue(udf)) continue;
                     Map<String, Object> extra = new LinkedHashMap<>();
                     extra.put("icon", icon);
                     extra.put("cost", cost(t, false));
@@ -123,6 +146,7 @@ public final class ExportCiv {
                 if (button != null && !button.iconPath().isEmpty()) extra.put("icon", icon(archive, outRoot, button.iconPath()));
                 extra.put("trains", trains);
                 extra.put("upgrades", upgrades);
+                extra.put("becomes", becomes);
                 extra.put("requires", requires);
                 try {
                     Convert.unit(archive, outRoot, buildingUdf, building, extra);
@@ -131,7 +155,7 @@ public final class ExportCiv {
                     continue;
                 }
                 buildings.put(buildingUdf, Map.of("name", stats.displayName(building),
-                        "trains", trains, "upgrades", upgrades));
+                        "trains", trains, "upgrades", upgrades, "becomes", becomes));
                 Map<String, Object> b = new LinkedHashMap<>();
                 b.put("building", buildingUdf);
                 b.put("name", stats.displayName(building));

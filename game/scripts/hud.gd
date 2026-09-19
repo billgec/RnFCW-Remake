@@ -216,7 +216,21 @@ func _rebuild_queue_icons(building: Building) -> void:
 
 func _panel_commands(building: Building) -> Array:
 	var commands := _upgrade_commands(building)
+	commands.append_array(_become_commands(building))
 	commands.append_array(_train_commands(building))
+	return commands
+
+
+## Rebuilding into a stronger building - the improved tower, the town defense, the bazaar.
+func _become_commands(building: Building) -> Array:
+	var commands := []
+	for entry in building.available_becomes():
+		commands.append({
+			"icon": entry.get("icon", ""), "title": str(entry.get("name", "Ausbau")),
+			"subtitle": "Ausbauen", "cost": entry.get("cost", {}), "row": 0,
+			"key": "become%s@%d" % [entry.get("building", ""), building.get_instance_id()],
+			"action": func(): building.enqueue_become(entry),
+		})
 	return commands
 
 

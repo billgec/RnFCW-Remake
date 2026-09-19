@@ -19,6 +19,9 @@ var max_hit_points := 1000.0
 var hit_points := 1000.0
 var trains: Array = []
 var upgrades: Array = []
+## Buildings this one can be rebuilt into (Improved Tower, Town Defense, Bazaar): the
+## original lists them in the building's own panel, see the converter's ExportCiv.
+var becomes: Array = []
 var family := "Building"
 var damage := 0.0
 var attack_range := 0.0
@@ -52,6 +55,8 @@ var _flag: Node3D
 var _height := 4.0
 var _glory_given := false
 var _statue_timer := 0.0
+var _defenders: Array[Node3D] = []
+var _next_defender := 0
 
 static var all_buildings: Array[Building] = []
 
@@ -75,6 +80,7 @@ func _ready() -> void:
 	max_hit_points = float(stats.get("hit_points", 1000))
 	trains = def.get("trains", [])
 	upgrades = def.get("upgrades", [])
+	becomes = def.get("becomes", [])
 	family = stats.get("family", "Building")
 	damage = float(stats.get("damage", 0))
 	attack_range = float(stats.get("range_m", 0))
@@ -114,6 +120,8 @@ func _ready() -> void:
 	hit_points = max_hit_points * build_progress
 	_apply_construction_look()
 	_update_bar()
+	if is_complete():
+		_man_the_walls()
 
 
 func _exit_tree() -> void:
@@ -163,6 +171,125 @@ func available_upgrades() -> Array:
 		result.append(entry)
 	result.sort_custom(func(a, b): return int(a.get("level", 0)) < int(b.get("level", 0)))
 	return result
+
+
+## Rebuilt versions this building offers right now.
+func available_becomes() -> Array:
+	var result := []
+	for entry in becomes:
+		if not GameState.has_research(team, int(entry.get("requires_research", 0))):
+			continue
+		if not GameState.level_reached(team, int(entry.get("level", 1))):
+			continue
+		result.append(entry)
+	return result
+
+
+## Queues the rebuild into a stronger building (paying for it).
+func enqueue_become(entry: Dictionary) -> bool:
+	if not is_complete() or queue.size() >= 8:
+		return false
+	for queued in queue:
+		if queued.has("becomes"):
+			return false
+	var cost: Dictionary = entry.get("cost", {})
+	if not GameState.spend(team, cost):
+		return false
+	queue.append({"becomes": str(entry["building"]), "name": entry.get("name", "Ausbau"),
+		"icon": entry.get("icon", ""), "cost": cost,
+		"time": maxf(float(cost.get("time_s", 30.0)), 10.0), "elapsed": 0.0})
+	queue_changed.emit(self)
+	return true
+
+
+## Swaps a building for the one it was rebuilt into, keeping its place and its damage.
+static func replace_with(old: Building, new_id: String) -> Building:
+	if not is_instance_valid(old) or not old.is_alive():
+		return null
+	var fresh := Building.create(new_id, old.team)
+	fresh.position = old.position
+	fresh.rotation = old.rotation
+	var fraction: float = clampf(old.hit_points / maxf(old.max_hit_points, 1.0), 0.25, 1.0)
+	var was_selected := old.selected
+	var rally := old.rally_point
+	old.get_parent().add_child(fresh)
+	fresh.hit_points = fresh.max_hit_points * fraction
+	fresh.rally_point = rally
+	fresh.selected = was_selected
+	old._dead = true
+	old.selected = false
+	all_buildings.erase(old)
+	old.queue_free()
+	return fresh
+
+
+## The original's towers are manned: their models carry four "tag_defender" points on the
+## battlements, and the tower's build list holds the "Building Defender Archer" that goes
+## there. The archers are part of the tower rather than units of their own - the tower's
+## own damage is theirs - so they are placed here as models only, and only on buildings
+## that actually shoot.
+func _man_the_walls() -> void:
+	if not _defenders.is_empty() or _model == null or damage <= 0.0 or attack_range <= 1.0:
+		return
+	var archer: String = _defender_unit()
+	if archer == "":
+		return
+	for point in _defender_points():
+		var model := Assets.spawn_unit(archer, GameState.team_color(team))
+		if model == null:
+			continue
+		# The tag carries the orientation the original animators gave it, which would lay
+		# the archer flat: only its place is used, the man stands upright.
+		add_child(model)
+		model.top_level = true
+		model.global_position = point
+		model.global_rotation = Vector3(0.0, global_rotation.y + randf_range(-0.6, 0.6), 0.0)
+		_defenders.append(model)
+		_play_defender(model, "idle")
+
+
+## Where a model wants its defenders. Depending on how the model was built, the tags are
+## either plain nodes (with a "_placement" parent at the origin, which is not a post) or
+## bones of the model's skeleton - the towers are the skinned kind.
+func _defender_points() -> Array:
+	var points: Array = []
+	for node: Node3D in _model.find_children("tag_defender_*", "Node3D", true, false):
+		if not node.name.ends_with("_placement"):
+			points.append(node.global_position)
+	for skeleton: Skeleton3D in _model.find_children("*", "Skeleton3D", true, false):
+		for index in skeleton.get_bone_count():
+			if skeleton.get_bone_name(index).begins_with("tag_defender"):
+				points.append((skeleton.global_transform * skeleton.get_bone_global_pose(index)).origin)
+	return points
+
+
+## The archer a manned building puts on its battlements: the civilization's own, so a
+## captured or allied tower shows the right men.
+func _defender_unit() -> String:
+	for building_id in GameState.civ(team).get("buildings", {}):
+		for entry in GameState.civ(team)["buildings"][building_id].get("trains", []):
+			if "archer" in str(entry.get("unit", "")):
+				return str(entry["unit"])
+	return ""
+
+
+func _play_defender(model: Node3D, role: String) -> void:
+	var player := model.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	if player == null:
+		return
+	var wanted := ""
+	for name in player.get_animation_list():
+		var hit := ("atck" in name or "attack" in name) if role == "attack" else ("fdgt" in name or "idle" in name)
+		if hit and not "3p" in name and not "death" in name:
+			wanted = name
+			break
+	if wanted == "" or (role != "attack" and player.current_animation == wanted):
+		return
+	var animation := player.get_animation(wanted)
+	var loop := Animation.LOOP_NONE if role == "attack" else Animation.LOOP_LINEAR
+	if animation.loop_mode != loop:
+		animation.loop_mode = loop
+	player.play(wanted, 0.15)
 
 
 ## How many units one training order produces: soldiers come as a group (the original
@@ -226,6 +353,8 @@ func add_construction(amount: float) -> void:
 	hit_points = minf(max_hit_points, hit_points + (build_progress - before) * max_hit_points)
 	_apply_construction_look()
 	_update_bar()
+	if is_complete():
+		_man_the_walls()
 
 
 ## Citizens repairing a finished building.
@@ -266,6 +395,12 @@ func _process(delta: float) -> void:
 			GameState.complete_research(team, int(entry["research"]), str(entry.get("name", "")))
 			queue_changed.emit(self)
 			return
+		if entry.has("becomes"):
+			var grown := Building.replace_with(self, str(entry["becomes"]))
+			if grown and team == GameState.human_team:
+				GameState.message.emit("%s fertiggestellt" % grown.display_name)
+			get_tree().current_scene.call("rebuild_navigation")
+			return
 		var count := int(entry.get("count", 1))
 		for i in count:
 			_spawn(entry["unit"])
@@ -293,10 +428,21 @@ func _shoot(delta: float) -> void:
 	if best == null:
 		return
 	_cooldown = attack_interval
+	var from := center + Vector3.UP * (_height * 0.8)
+	if not _defenders.is_empty():
+		# One of the men on the battlements looses the arrow, and they take turns.
+		_next_defender = (_next_defender + 1) % _defenders.size()
+		var shooter: Node3D = _defenders[_next_defender]
+		var offset := best.global_position - shooter.global_position
+		offset.y = 0.0
+		if offset.length() > 0.1:
+			shooter.global_rotation.y = atan2(-offset.x, -offset.z)
+		_play_defender(shooter, "attack")
+		from = shooter.global_position + Vector3.UP * 1.2
 	var projectile := preload("res://scripts/projectile.gd").new()
 	get_parent().add_child(projectile)
 	var multiplier := GameState.damage_multiplier(family, best.family, false)
-	projectile.launch(null, best, center + Vector3.UP * (_height * 0.8), damage * multiplier)
+	projectile.launch(null, best, from, damage * multiplier)
 
 
 func _spawn(unit_id: String) -> void:
