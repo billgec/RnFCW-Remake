@@ -6,7 +6,10 @@ extends CanvasLayer
 ## Icons: unit, building and upgrade icons come from the original game; the interface icons
 ## (resources, speed) are CC BY 3.0 from game-icons.net, see assets/icons/NOTICE.md.
 
+const Minimap := preload("res://scripts/minimap.gd")
+
 const PANEL_HEIGHT := 178.0
+const MINIMAP_SIZE := 162.0
 const SLOT := 58.0
 const COLUMNS := 7
 
@@ -23,6 +26,7 @@ const RESOURCE_STYLE := {
 
 var selection: Node  # selection_controller.gd
 var hero_mode: Node  # hero_mode.gd
+var camera_rig: Node3D  # the minimap steers it
 var team := 0
 
 var _font: Font
@@ -548,6 +552,14 @@ func _build_bottom_panel() -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 18)
 	panel.add_child(row)
+
+	var minimap := Minimap.new()
+	minimap.name = "Minimap"
+	minimap.custom_minimum_size = Vector2(MINIMAP_SIZE, MINIMAP_SIZE)
+	minimap.camera_rig = camera_rig
+	minimap.selection = selection
+	minimap.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(minimap)
 
 	var portrait_frame := _slot_frame(118.0)
 	portrait_frame.size_flags_vertical = Control.SIZE_SHRINK_CENTER

@@ -10,6 +10,10 @@ var amount := 1000
 var radius := 1.0
 var gatherers := 0
 
+## Trees, rocks and mines are drawn on the minimap's terrain render, so they sit on its
+## layer as well (see minimap.gd).
+const MINIMAP_LAYERS := 1 | (1 << 1)
+
 static var all_nodes: Array[ResourceNode] = []
 static var _tree_meshes: Array = []
 
@@ -89,6 +93,8 @@ static func _greenify(model: Node3D) -> void:
 
 func _ready() -> void:
 	all_nodes.append(self)
+	for mesh: MeshInstance3D in find_children("*", "MeshInstance3D", true, false):
+		mesh.layers = MINIMAP_LAYERS
 
 
 func _exit_tree() -> void:

@@ -351,3 +351,22 @@ object state, block 6 effects.
 * Display names live in `Language2.dll` as ordinary Win32 `RT_STRING` resources (4631 of
   them), referenced by `dbobjects +296`.
 * Graphics options are stored in the Windows registry, not in a config file.
+
+### The minimap
+
+Worth knowing if you rebuild one, because the assets give the recipe away:
+
+* Every ground texture has a small twin for the map: `textures\ui_x<terrain>.sst`, 64x64
+  uncompressed RGBA with a full mip chain (`ui_xbasegrass_00`, `ui_xdeepwater_00`,
+  `ui_xforestdesiduous`, …). The map is painted from those, which is why it looks like the
+  real terrain rather than a colour key.
+* Everything that belongs to a player is stamped on top as a plain white square,
+  `textures\ui_square.sst` (64x64, DXT), tinted with the player colour - hence the coarse
+  pixel blocks for buildings.
+* `textures\sfx_xradar.sst` holds the green view wedge, `sfx_xminimaparrow(s).sst` the
+  arrows that point at events off screen, and `effects\sfx_*minimap*.edf` drive the flare
+  and "under attack" markers.
+* The frame is a 3D model like the rest of the interface (`models\ui_ymminimap_model.gr2`,
+  `units\ui_ymminimap.udf`), textured from the civilization's interface atlas
+  `textures\ui_ymrtst.dds` (1024x512). The stone diamond sits at (53, 0) and is 312x308
+  pixels; its middle is painted black - that is the hole the map is drawn into.

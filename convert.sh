@@ -27,7 +27,8 @@ java -cp "$CLASSES" com.rnf.tools.ExportCiv "$DATA_SSA" "$OUT" Greek "A - Cit - 
 java -cp "$CLASSES" com.rnf.tools.ExportPointers "$DATA_SSA" "$OUT"
 java -cp "$CLASSES" com.rnf.tools.Convert unit "$DATA_SSA" "$OUT" amb_ygoldmine_01
 java -cp "$CLASSES" com.rnf.tools.Convert texture "$DATA_SSA" "$OUT" \
-  'textures\sfx_ybaseformationflags_t.dds' 'textures\sfx_ymrallyflag_t.dds'
+  'textures\sfx_ybaseformationflags_t.dds' 'textures\sfx_ymrallyflag_t.dds' \
+  'textures\ui_ymrtst.dds'
 java -cp "$CLASSES" com.rnf.tools.Convert model "$DATA_SSA" "$OUT" 'models\sfx_ymbaseformationflags_model.gr2'
 java -cp "$CLASSES" com.rnf.tools.ConvertEffect "$DATA_SSA" "$OUT" 'models\sfx_ymrallyflag.gr2' \
   'textures\sfx_ymrallyflag_t.dds' 'animations\miscellaneous\sfx_yrallyflag_anim.gr2'

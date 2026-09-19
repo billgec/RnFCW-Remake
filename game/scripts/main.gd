@@ -7,7 +7,7 @@ extends Node3D
 ##   --frames=<n>            frames to wait before the snapshot (default 90)
 ##   --cam=<x>,<z>,<yaw°>,<distance>,<pitch°>   initial camera placement
 ##   --demo-move=<x>,<z>     select the blue soldiers and attack-move there
-##   --demo-select=<what>    army | workers | barracks | towncenter | heromode | halfbox | squads | rally
+##   --demo-select=<what>    army | workers | barracks | towncenter | heromode | halfbox | squads | rally | engage | minimap
 ##   --hero-action=<what>    with --demo-select=heromode: run | attack | special | duel
 ##   --show-health=1         always show hit point bars
 ##   --perf=<seconds>        log the frame budget every few seconds
@@ -17,6 +17,7 @@ const TERRAIN_SHADER := preload("res://shaders/terrain.gdshader")
 const SelectionController := preload("res://scripts/selection_controller.gd")
 const SquadManager := preload("res://scripts/squad_manager.gd")
 const Hud := preload("res://scripts/hud.gd")
+const Minimap := preload("res://scripts/minimap.gd")
 const EnemyAI := preload("res://scripts/enemy_ai.gd")
 const HealthBar := preload("res://scripts/health_bar.gd")
 
@@ -72,6 +73,7 @@ func _ready() -> void:
 	var hud := Hud.new()
 	hud.selection = _selection
 	hud.hero_mode = hero_mode
+	hud.camera_rig = camera_rig
 	add_child(hud)
 	var ai := EnemyAI.new()
 	add_child(ai)
@@ -274,6 +276,51 @@ func _demo_select() -> void:
 							fresh.append("%d x %s" % [squad["members"].size(), squad["type"]])
 					print("[t=%3ds] team0 groups: %s" % [(step + 1) * 15, ", ".join(fresh)])
 				break
+		"engage":
+			# March one group towards the enemy, then watch how it attacks: it should close
+			# in as a block (small spread), not trickle in one by one.
+			await get_tree().create_timer(1.2).timeout
+			var squads_node: Node = get_node("Squads")
+			var group := {}
+			for squad in squads_node.squads:
+				if squad["team"] == 0 and squad["members"][0].ranged == false:
+					group = squad
+					break
+			if group.is_empty():
+				return
+			for unit in group["members"]:
+				unit.selected = true
+			_selection.order_selected_move(Vector3(0, 0, -28))
+			for step in 24:
+				await get_tree().create_timer(3.0).timeout
+				var members: Array = group["members"].filter(func(u): return is_instance_valid(u) and u.is_alive())
+				if members.is_empty():
+					break
+				var center := Vector3.ZERO
+				for u in members:
+					center += u.position
+				center /= members.size()
+				var spread := 0.0
+				var states := {}
+				for u in members:
+					spread = maxf(spread, u.position.distance_to(center))
+					var name: String = Unit.State.keys()[u.state]
+					states[name] = states.get(name, 0) + 1
+				var nearest := 999.0
+				for u in Unit.all_units:
+					if u.team == 1 and u.is_alive():
+						nearest = minf(nearest, center.distance_to(u.position))
+				print("[t=%3ds] %d left, spread %.1f m, nearest enemy %.0f m, %s" % [
+					(step + 1) * 3, members.size(), spread, nearest, states])
+		"minimap":
+			await get_tree().create_timer(0.8).timeout
+			var map: Control = get_tree().root.find_child("Minimap", true, false)
+			for spot in [Vector2(0.5, 0.5), Vector2(0.85, 0.5), Vector2(0.5, 0.85)]:
+				var local: Vector2 = spot * map.size
+				var world: Vector3 = map._world_at(local)
+				map._look_at_point(local)
+				print("minimap %.2f/%.2f -> world %.0f,%.0f  camera %.0f,%.0f" % [spot.x, spot.y,
+					world.x, world.z, camera_rig.position.x, camera_rig.position.z])
 		"halfbox":
 			# Drag a box over only the front half of a group: all of it must end up selected.
 			await get_tree().create_timer(1.2).timeout
@@ -550,4 +597,5 @@ func _build_ground() -> void:
 	ground.mesh = plane
 	ground.material_override = material
 	ground.name = "Ground"
+	ground.layers = 1 | (1 << (Minimap.TERRAIN_LAYER - 1))  # also seen by the minimap camera
 	add_child(ground)

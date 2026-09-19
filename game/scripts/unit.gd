@@ -35,6 +35,10 @@ var line := ""
 var level := 1
 var is_hero := false
 var state := State.IDLE
+## Set while the unit belongs to a group: it then holds its place in the block and only
+## strikes what comes within its own reach - when and where the block attacks is decided
+## for all of them together in squad_manager.gd.
+var holds_formation := false
 ## Set while the player steers this unit directly (hero mode): its own state machine is off
 ## and hero_mode.gd moves, animates and swings for it.
 var player_controlled := false
@@ -221,6 +225,9 @@ func take_damage(amount: float, attacker) -> void:
 		return  # the player decides what to answer with
 	var busy: bool = state == State.ATTACK and _target != null and _target.is_alive()
 	if attacker and attacker.is_alive() and attacker is Unit and not busy and state != State.MOVE:
+		# In a block nobody chases the archer that shot them - the group answers as one.
+		if holds_formation and position.distance_to(attacker.position) > engage_range():
+			return
 		if not is_worker or state == State.IDLE:
 			order_attack(attacker)
 
@@ -241,14 +248,14 @@ func _physics_process(delta: float) -> void:
 		State.IDLE:
 			if not is_worker and _scan_timer <= 0.0:
 				_scan_timer = 0.35
-				var enemy = _nearest_enemy(sight)
+				var enemy = _nearest_enemy(engage_range())
 				if enemy:
 					order_attack(enemy)
 			_apply_separation(delta)
 		State.MOVE:
 			if _attack_move and _scan_timer <= 0.0:
 				_scan_timer = 0.35
-				var enemy = _nearest_enemy(sight)
+				var enemy = _nearest_enemy(engage_range())
 				if enemy:
 					order_attack(enemy)
 					return
@@ -298,6 +305,16 @@ func _update_attack(delta: float) -> void:
 		_swing_timer = anim_length * (0.55 if ranged else 0.45)
 	elif _swing_timer < 0.0 and not _is_playing("attack"):
 		_play("combat_idle" if _anims["combat_idle"] != "" else "idle")
+
+
+## How far this unit picks fights on its own. On its own that is as far as it can see; in a
+## block only what it can already hit, so the ranks stay closed until the group charges.
+func engage_range() -> float:
+	if not holds_formation:
+		return sight
+	if ranged:
+		return attack_range + radius
+	return maxf(attack_range + radius + 2.0, 3.0)
 
 
 ## Damage after the class bonus for this attacker/target pair (see data/bonuses.json).

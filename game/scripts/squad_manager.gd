@@ -20,6 +20,11 @@ const MARCH_REISSUE := 0.4
 const MARCH_ARRIVED := 1.5
 const MARCH_PATIENCE := 3.0   # after waiting this long for a straggler, the block moves on
 
+## Fighting as a group: how often the block looks for enemies, and how far the enemy has to
+## move before the charge is aimed at its new place.
+const ENGAGE_INTERVAL := 0.6
+const ENGAGE_RETARGET := 4.0
+
 var squads: Array[Dictionary] = []  # {id, members, banner, team, type, march?}
 
 var _timer := 0.0
@@ -27,6 +32,7 @@ var _squad_of := {}  # unit instance id -> squad dictionary
 var _banner_pool: Array[Node3D] = []
 var _next_id := 1
 var _marches: Array[Dictionary] = []
+var _engage_timer := 0.0
 
 
 func _process(delta: float) -> void:
@@ -34,6 +40,10 @@ func _process(delta: float) -> void:
 	if _timer <= 0.0:
 		_timer = 0.5
 		_update_membership()
+	_engage_timer -= delta
+	if _engage_timer <= 0.0:
+		_engage_timer = ENGAGE_INTERVAL
+		_update_engagements()
 	for record in _marches.duplicate():
 		_advance_march(record, delta)
 	var t := Time.get_ticks_msec() / 1000.0
@@ -72,6 +82,7 @@ func _update_membership() -> void:
 		if members.size() < DISSOLVE_BELOW:
 			for u in members:
 				_squad_of.erase(u.get_instance_id())
+				u.holds_formation = false
 			_release_banner(squad["banner"])
 			squads.erase(squad)
 
@@ -113,6 +124,7 @@ func _update_membership() -> void:
 				squads.append(squad)
 				for u in members:
 					_squad_of[u.get_instance_id()] = squad
+					u.holds_formation = true
 
 
 # --- marching ---------------------------------------------------------------
@@ -122,7 +134,9 @@ func _update_membership() -> void:
 ## travels, everyone gets the slot nearest to where they already stand, and the block then
 ## walks as one - see _advance_march. Pass the group in [param squad] so the block follows
 ## its membership as soldiers join or fall.
-func march(members: Array, target: Vector3, attack_move := false, squad := {}) -> void:
+## [param engage] marks a march the group may re-aim: an attack move or a charge follows
+## enemies that come into sight, a plain move order is carried out as given.
+func march(members: Array, target: Vector3, attack_move := false, squad := {}, engage := false) -> void:
 	var living := _living(members)
 	if living.is_empty():
 		return
@@ -134,7 +148,8 @@ func march(members: Array, target: Vector3, attack_move := false, squad := {}) -
 		"squad": squad, "members": living, "anchor": center,
 		"target": Vector3(target.x, 0.0, target.z),
 		"forward": forward, "right": forward.cross(Vector3.UP),
-		"attack": attack_move, "timer": MARCH_REISSUE, "slots": {}, "waited": 0.0,
+		"attack": attack_move, "engage": engage,
+		"timer": MARCH_REISSUE, "slots": {}, "waited": 0.0,
 	}
 	_marches.append(record)
 	_assign_slots(record, living)
@@ -221,6 +236,65 @@ static func _distance_to_nearest(members: Array, unit) -> float:
 	for member in members:
 		best = minf(best, member.position.distance_to(unit.position))
 	return best
+
+
+# --- fighting as a group ----------------------------------------------------
+
+## A group fights as a group: as soon as one of them sees an enemy within reach, the whole
+## block advances on it instead of single soldiers peeling off one by one. Individuals only
+## strike what comes into their own reach (Unit.engage_range), so the ranks stay closed
+## until the block itself charges.
+func _update_engagements() -> void:
+	for squad in squads:
+		var members := _living(squad["members"])
+		if members.is_empty():
+			continue
+		var record := _march_of(squad)
+		# A plain move order from the player is left alone; a charge is re-aimed.
+		if not record.is_empty() and not record.get("engage", false):
+			continue
+		var center := _center(members)
+		var enemy := _nearest_enemy(center, squad["team"], members[0].sight)
+		if enemy == null:
+			continue
+		var target := _contact_point(members[0], center, enemy.global_position)
+		if not record.is_empty() and record["target"].distance_to(target) < ENGAGE_RETARGET:
+			continue  # already charging that spot
+		march(members, target, true, squad, true)
+
+
+## Where the block stops: just inside its own weapon reach, so melee walks into contact and
+## archers halt where they can shoot.
+static func _contact_point(example, center: Vector3, enemy: Vector3) -> Vector3:
+	var direction := Vector3(enemy.x - center.x, 0.0, enemy.z - center.z)
+	if direction.length() < 0.5:
+		return enemy
+	var reach: float = example.attack_range + example.radius
+	var stand_off: float = reach * 0.8 if example.ranged else reach + 1.0
+	return enemy - direction.normalized() * stand_off
+
+
+## Nearest living enemy soldier. Buildings are left to the player - a group should not walk
+## into a tower on its own.
+static func _nearest_enemy(from: Vector3, team: int, range_m: float) -> Unit:
+	var best: Unit = null
+	var best_distance := range_m
+	for unit in Unit.all_units:
+		if unit.team == team or not unit.is_alive():
+			continue
+		var distance := from.distance_to(unit.global_position)
+		if distance < best_distance:
+			best_distance = distance
+			best = unit
+	return best
+
+
+func _march_of(squad: Dictionary) -> Dictionary:
+	for record in _marches:
+		var owner: Dictionary = record["squad"]
+		if not owner.is_empty() and owner.get("id", -1) == squad.get("id", -2):
+			return record
+	return {}
 
 
 static func _clusters(units: Array) -> Array:

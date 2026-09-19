@@ -43,6 +43,7 @@ export RNF_DATA_SSA="/path/to/Rise And Fall/Data/data.ssa"   # optional, see con
 | Buttons bottom right | buildings: train units · citizens: found buildings (left click places, right click/Esc cancels) |
 | H, or the hero's button | enter hero mode · Esc or H leaves it |
 | F5 | graphics quality: low · medium · high (saved) |
+| Minimap: left click/drag · right click | move the camera · send the selection there |
 
 ### Hero mode
 
@@ -75,9 +76,14 @@ export RNF_DATA_SSA="/path/to/Rise And Fall/Data/data.ssa"   # optional, see con
   banner, freshly trained troops gathering at a rally point among them. A group is selected
   as a whole and marches as a block - the formation is laid out facing the way it travels,
   everyone gets the slot nearest to where they stand, and the block waits for stragglers
-  instead of tearing apart
+  instead of tearing apart. A group also fights as a group: when an enemy comes within
+  sight the whole block advances on it, and single soldiers only strike what comes into
+  their own reach instead of peeling off one by one
 * A computer opponent that gathers, trains and attacks in waves
 * The original mouse pointers, switching with context (attack, wood, gold, build, repair, …)
+* A minimap built the way the original built its own: the map is shown as a diamond inside
+  the game's own stone frame, the terrain is a real top-down render of the ground and
+  everything owned by a player is stamped over it as coarse squares in their colour
 * Hero mode: take direct third-person control of the hero, with the original's third-person
   animation set (directional runs, shield, combo swings, special attack); the soldiers around
   him become a retinue and follow him, and a fallen hero returns at his town center

@@ -259,9 +259,14 @@ func _command(screen_point: Vector2, attack_move: bool) -> void:
 			_show_marker(b.global_position)
 			return
 	if enemy:
-		for unit in units:
-			unit.order_attack(enemy)
 		_show_marker(enemy.global_position)
+		# Ordered onto an enemy soldier, groups charge as blocks; buildings are walked up to
+		# directly, their footprint gives everyone a place to stand anyway.
+		if enemy is Unit and squads:
+			order_selected_move(enemy.global_position, true, units)
+		else:
+			for unit in units:
+				unit.order_attack(enemy)
 		return
 	var resource := _resource_at(screen_point)
 	if resource:
@@ -397,7 +402,7 @@ func order_selected_move(point: Vector3, attack_move := false, units: Array = []
 		widths.append(Formation.block_width(members.size(), Formation.spacing_for(members[0])) if not members.is_empty() else 0.0)
 	var targets := Formation.spread(point, center, widths)
 	for i in blocks.size():
-		squads.march(blocks[i]["members"], targets[i], attack_move, blocks[i]["squad"])
+		squads.march(blocks[i]["members"], targets[i], attack_move, blocks[i]["squad"], attack_move)
 
 
 func _build_marker() -> void:
