@@ -141,5 +141,5 @@ pipeline in `converter/src/com/rnf/`.
   CC0 (license file in `game/assets/nature/`).
 * Interface icons (resources, game speed): [game-icons.net](https://game-icons.net),
   CC BY 3.0 - see `game/assets/icons/NOTICE.md` for the individual authors.
-* Everything under `game/assets/original/` is generated from your own copy of the original
+* Everything under `game/assets/original/` is generated from our own copy of the original
   game and is **not** distributed here. *Rise & Fall: Civilizations at War* is © Midway.
