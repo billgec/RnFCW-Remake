@@ -95,6 +95,7 @@ export RNF_DATA_SSA="/path/to/Rise And Fall/Data/data.ssa"   # optional, see con
 Not there yet: armour values, terrain/maps, the other three civilizations.
 
 ## Performance
+**TODO** increase performance
 
 The game draws at the window's real resolution, which on a high density display is around
 three times the 1920x1080 the project asks for. At that size the screen space effects cost
