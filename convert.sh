@@ -23,7 +23,10 @@ java -cp "$CLASSES" com.rnf.tools.ExportCiv "$DATA_SSA" "$OUT" Greek "A - Cit - 
   "A - Inf00 - Alexander Melee - RTS mode (Greek)" \
   "A - b  Statue Glory (Greek)" "A - b  Settlement (MP) (Tent) (Greek)" "A - b  Town Center (MP) (Greek)" "A - b  Barracks (MP) (Greek)" \
   "A - b  Archery Range (MP) (Greek)" "A - b  Stable (MP) (Greek)" "A - b  Spartan Academy (MP) (Greek)" \
-  "A - b  Tower 1x1 (Greek)" "A - b  Market (Greek)" "A - b  Government Center (MP) (Greek)"
+  "A - b  Tower 1x1 (Greek)" "A - b  Market (Greek)" "A - b  Government Center (MP) (Greek)" \
+  "A - b  Wall Straight (Greek)" "A - b  Gate Left (SP) (Greek)"
+# The second gate leaf: the gate record is one door, the building mounts both (building.gd).
+java -cp "$CLASSES" com.rnf.tools.Convert unit "$DATA_SSA" "$OUT" wall_ymgateright_00
 java -cp "$CLASSES" com.rnf.tools.ExportPointers "$DATA_SSA" "$OUT"
 java -cp "$CLASSES" com.rnf.tools.Convert unit "$DATA_SSA" "$OUT" amb_ygoldmine_01
 java -cp "$CLASSES" com.rnf.tools.Convert texture "$DATA_SSA" "$OUT" \

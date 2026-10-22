@@ -40,7 +40,7 @@ export RNF_DATA_SSA="/path/to/Rise And Fall/Data/data.ssa"   # optional, see con
 | Cmd/Ctrl + right click | attack-move |
 | Hold Option/Alt | show hit point bars |
 | Space · + / − · speed buttons | pause · game speed (0.5x to 3x, any time) |
-| Buttons bottom right | buildings: train units · citizens: found buildings (left click places, right click/Esc cancels) |
+| Buttons bottom right | buildings: train units · citizens: found buildings (left click places, right click/Esc cancels) · walls: hold and drag to lay a whole run |
 | H, or the hero's button | enter hero mode · Esc or H leaves it |
 | F5 | graphics quality: low · medium · high (saved) |
 | Minimap: left click/drag · right click | move the camera · send the selection there |
@@ -74,6 +74,15 @@ stamina ones are not in its data files and are tuned by hand).
   projectiles, death animations, automatic target acquisition
 * Towers are manned: four archers stand on the battlements where the original model's
   `tag_defender` points are, and the one that looses the arrow turns and draws his bow
+* Walls and gates, from the original's own wall pieces: a wall is dragged out as a run the
+  way the original drags one, one 6.1 m tile per segment, and the finished run closes the
+  ground behind it. A tile already built on is skipped rather than refused, so runs can be
+  joined and corners filled. A gate is two tiles wide - that is the width its two door
+  leaves need to meet in the middle - and is simply dropped into a finished run: it turns
+  itself along the wall and the segments it covers are paid back. It stands open while its
+  own men are near and shut for everyone else, so an enemy that reaches it is stopped in
+  front of it and has to break it down; the computer opponent picks the piece in its way
+  that will fall soonest and sends the whole wave at that one
 * Buildings can be rebuilt into their stronger version, straight from the original data:
   Tower to Improved Tower, Town Center to Town Defense, Market to Bazaar
 * Class bonuses via `game/data/bonuses.json` (spears beat cavalry, …), freely editable
@@ -108,7 +117,9 @@ stamina ones are not in its data files and are tuned by hand).
   animation set (directional runs, shield, combo swings, special attack); the soldiers around
   him become a retinue and follow him, and a fallen hero returns at his town center
 
-Not there yet: armour values, terrain/maps, the other three civilizations.
+Not there yet: the ladder and siege tower assault on walls (the models carry the
+`tag_scaffolding*` attachment points for it), armour values, terrain/maps, the other three
+civilizations.
 
 ## Performance
 **TODO** increase performance
@@ -139,6 +150,7 @@ game/             the Godot project
   assets/nature/     CC0 tree models ("Stylized Nature MegaKit" by Quaternius)
   data/bonuses.json  class bonus table
   scripts/           GDScript (units, buildings, AI, HUD, selection, …)
+  tests/             checks that run without the game (./run.sh test)
   shaders/           player colour, terrain, selection rings
 docs/FORMATS.md   reverse-engineered file format reference
 ```
@@ -151,6 +163,40 @@ and lighting are easiest to edit in the Godot editor itself (`./run.sh edit`).
 
 Gameplay lives in `game/scripts/*.gd`, balance in `game/data/bonuses.json`, the asset
 pipeline in `converter/src/com/rnf/`.
+
+`./run.sh test` runs the checks and is over in a few seconds. There are two suites:
+
+* `game/tests/test_walls.gd` - the wall grid (`game/scripts/wall_grid.gd`): where the
+  segments of a leg land, which way they face, how much ground a piece covers.
+* `game/tests/test_formation.gd` - the block a group marches in (`game/scripts/formation.gd`):
+  how wide it stands, where each slot sits, who gets which slot, how several blocks line up
+  side by side. The soldiers are stand-ins with nothing but a position and a radius.
+* `game/tests/test_units.tscn` - the rules a soldier goes by: the values he is built from,
+  what his blow is worth against a given enemy and against a wall, how far he looks for a
+  fight, what he does when he is hit, which target he picks, what a shut gate does to a
+  stranger, what an order does to him, and how a veteran steps into his place.
+* `game/tests/test_game.tscn` - the pieces as real buildings: their footprints, hit points
+  and build times out of the original data, a gate's two leaves and the segments it
+  swallows, where the computer opponent breaks through a wall, what a building's panel
+  offers, and what things cost. It runs as a scene so the autoloads are there, but it
+  builds no skirmish.
+
+The first two are plain arithmetic that depends on nothing, so they run as bare scripts
+without even the autoloads.
+
+A failing check names itself and the run carries on, so one go lists everything that is
+wrong rather than only the first thing.
+
+What only a running world can answer - does a wall really take its ground out of the
+navmesh, does a gate open for its own men and shut behind them - is checked by the
+`--demo-select=` runs listed at the top of `game/scripts/main.gd`. Those start the whole
+game and take about a minute each, so they are for when that area changes, not for every edit:
+
+```bash
+./run.sh test                                                          # a few seconds
+godot --headless --path game -- --demo-select=walls --quit-when-done     # the gate
+godot --headless --path game -- --demo-select=wallchain --quit-when-done # a walled yard
+```
 
 ## Credits and licensing
 

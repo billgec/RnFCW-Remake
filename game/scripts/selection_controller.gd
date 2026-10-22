@@ -4,7 +4,11 @@ extends Control
 ## click a building: select it. Right click: attack enemy, gather resource (citizens),
 ## help construct, set rally point (building selected), move (Cmd/Ctrl: attack-move).
 ## Placement mode (from the HUD): left click places the building, right click/Esc cancels.
+## Walls are placed as a chain the way the original builds them: the first click sets where
+## the wall starts, every click after it builds the leg up to that point and carries on from
+## there, and only right click or Esc ends it.
 
+const WallGrid := preload("res://scripts/wall_grid.gd")
 signal selection_changed
 
 @export var own_team := 0
@@ -20,6 +24,10 @@ var _marker_time := 0.0
 var _placing_id := ""
 var _ghost: Node3D
 var _ghost_valid := false
+## Where the leg being laid out starts, null while no wall chain is going.
+var _run_from = null
+var _run_ghosts: Array[Node3D] = []
+
 
 @onready var _camera: Camera3D = get_viewport().get_camera_3d()
 
@@ -53,17 +61,26 @@ func begin_placement(building_id: String) -> void:
 		GameState.spend(own_team, cost)  # shows the "not enough" message
 		return
 	_placing_id = building_id
-	_ghost = Assets.spawn_unit(building_id, GameState.team_color(own_team))
-	for mesh: MeshInstance3D in _ghost.find_children("*", "MeshInstance3D", true, false):
+	_ghost = _spawn_ghost()
+	_ghost.rotation_degrees.y = 180.0
+
+
+func _spawn_ghost() -> Node3D:
+	var ghost := Assets.spawn_unit(_placing_id, GameState.team_color(own_team))
+	for mesh: MeshInstance3D in ghost.find_children("*", "MeshInstance3D", true, false):
 		mesh.transparency = 0.45
 		mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	get_tree().current_scene.add_child(_ghost)
-	_ghost.rotation_degrees.y = 180.0
+	get_tree().current_scene.add_child(ghost)
+	return ghost
 
 
 func cancel_placement() -> void:
 	if _ghost:
 		_ghost.queue_free()
+	for ghost in _run_ghosts:
+		ghost.queue_free()
+	_run_ghosts.clear()
+	_run_from = null
 	_ghost = null
 	_placing_id = ""
 
@@ -99,20 +116,95 @@ func _unhandled_input(event: InputEvent) -> void:
 func _placement_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
 		var point = _ground_point(event.position)
-		if point != null:
-			_ghost.global_position = (point as Vector3).snapped(Vector3(1, 0, 1))
-			_ghost_valid = _placement_free(_ghost)
-			for mesh: MeshInstance3D in _ghost.find_children("*", "MeshInstance3D", true, false):
-				mesh.transparency = 0.35 if _ghost_valid else 0.8
-	elif event is InputEventMouseButton and event.pressed:
-		if event.button_index == MOUSE_BUTTON_RIGHT:
-			cancel_placement()
-		elif event.button_index == MOUSE_BUTTON_LEFT and _ghost_valid:
+		if point == null:
+			return
+		_ghost.global_position = (point as Vector3).snapped(Vector3(1, 0, 1))
+		if "gate" in _placing_id:
+			_ghost.rotation.y = _gate_yaw(_ghost.global_position)
+		if _run_from != null:
+			_show_run(_run_from, _ghost.global_position)
+			return
+		_ghost_valid = _placement_free(_ghost_footprint(_ghost))
+		_tint(_ghost, _ghost_valid)
+	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+		cancel_placement()
+	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		if _lays_a_run():
+			# First click anchors the chain, every one after it builds the leg up to the
+			# cursor and starts the next leg where that one ended.
+			_run_from = _ghost.global_position if _run_from == null else _place_run()
+			_show_run(_run_from, _run_from)
+		elif _ghost_valid:
+			Building.clear_for(own_team, _ghost_footprint(_ghost))
 			place_building(_placing_id, _ghost.global_position, _ghost.rotation.y)
 			if not event.shift_pressed:
 				cancel_placement()
 	elif event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
 		cancel_placement()
+
+
+## Which way a gate being set down should face: along the wall line around it. Segments to
+## its left and right mean the line runs along X, ones in front and behind mean along Z.
+func _gate_yaw(at: Vector3) -> float:
+	var spread := Vector2.ZERO
+	for b in Building.all_buildings:
+		if b.team != own_team or not b.is_wall():
+			continue
+		var offset := Vector2(b.global_position.x - at.x, b.global_position.z - at.z)
+		if offset.length() < WallGrid.TILE * 2.5:
+			spread += offset.abs()
+	return 0.0 if spread.x >= spread.y else PI * 0.5
+
+
+## Wall segments are laid out as a chain of legs; gates and ordinary buildings go down singly.
+func _lays_a_run() -> bool:
+	return _placing_id.begins_with("wall_") and not "gate" in _placing_id
+
+
+## What the ghost will cover once founded - the same rule Building._ready() uses.
+func _ghost_footprint(ghost: Node3D) -> Rect2:
+	if _placing_id.begins_with("wall_"):
+		var tiles := Vector2i(WallGrid.GATE_TILES, 1) if "gate" in _placing_id else Vector2i.ONE
+		return WallGrid.footprint(ghost.global_position, ghost.rotation.y, tiles)
+	return Building.compute_footprint(ghost)
+
+
+## Keeps one ghost per segment of the run under the cursor.
+func _show_run(from: Vector3, to: Vector3) -> void:
+	var points := WallGrid.run(from, to)
+	var yaw := WallGrid.run_yaw(from, to)
+	while _run_ghosts.size() < points.size():
+		_run_ghosts.append(_spawn_ghost())
+	_ghost.visible = false
+	for i in _run_ghosts.size():
+		var ghost := _run_ghosts[i]
+		ghost.visible = i < points.size()
+		if not ghost.visible:
+			continue
+		ghost.global_position = points[i]
+		ghost.rotation.y = yaw
+		_tint(ghost, _placement_free(_ghost_footprint(ghost)))
+
+
+## Founds every segment of the leg that fits and returns where it ended, which is where the
+## next leg starts. A tile already taken is skipped rather than refused, so legs join at
+## their corner and runs can be extended; running out of gold or wood stops the leg.
+func _place_run() -> Vector3:
+	var points := WallGrid.run(_run_from, _ghost.global_position)
+	for ghost in _run_ghosts:
+		if not ghost.visible:
+			continue
+		if not _placement_free(_ghost_footprint(ghost)):
+			continue
+		if place_building(_placing_id, ghost.global_position, ghost.rotation.y) == null:
+			break  # out of gold or wood
+	get_tree().current_scene.call("rebuild_navigation")
+	return points[points.size() - 1]
+
+
+static func _tint(node: Node3D, ok: bool) -> void:
+	for mesh: MeshInstance3D in node.find_children("*", "MeshInstance3D", true, false):
+		mesh.transparency = 0.35 if ok else 0.8
 
 
 ## Pays for and founds a building; selected citizens start constructing it.
@@ -131,9 +223,15 @@ func place_building(building_id: String, at: Vector3, yaw: float) -> Building:
 	return building
 
 
-func _placement_free(ghost: Node3D) -> bool:
-	var rect := Building.compute_footprint(ghost).grow(1.0)
+func _placement_free(footprint: Rect2) -> bool:
+	# Walls butt up against each other, so instead of clearance they get a hair of slack so
+	# touching tiles do not read as overlapping; everything else keeps a metre around it.
+	var rect := footprint.grow(-0.05 if _placing_id.begins_with("wall_") else 1.0)
 	for b in Building.all_buildings:
+		# A gate is dropped straight into a finished run: the own segments it covers make
+		# way for it instead of blocking it (Building.clear_for).
+		if "gate" in _placing_id and b.team == own_team and b.is_wall() and not b.is_gate():
+			continue
 		if b.footprint.intersects(rect):
 			return false
 	for r in ResourceNode.all_nodes:

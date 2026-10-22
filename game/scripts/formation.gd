@@ -21,8 +21,11 @@ static func slots(count: int, spacing: float) -> Array:
 	return result
 
 
+## How many files a block of this many men stands in: about twice as wide as it is deep,
+## the way a line of battle stands. Never more files than there are men - one man is a file
+## of his own and arrives where he was sent, not half a spacing beside it.
 static func columns_for(count: int) -> int:
-	return maxi(1, int(ceil(sqrt(count * 2.0))))
+	return clampi(int(ceil(sqrt(count * 2.0))), 1, maxi(1, count))
 
 
 static func block_width(count: int, spacing: float) -> float:
@@ -102,7 +105,7 @@ static func move(units: Array, point: Vector3, attack_move := false) -> void:
 
 
 ## Where a type belongs in a line: melee in front, ranged beside it, big units on the flank.
-static func type_order(unit: Unit) -> int:
+static func type_order(unit) -> int:
 	if unit.is_worker:
 		return 4
 	if unit.ranged:

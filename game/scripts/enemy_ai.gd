@@ -2,6 +2,7 @@ extends Node
 ## Computer player: keeps its citizens gathering, trains citizens and soldiers as income
 ## allows, gathers an army at home and attacks the enemy's buildings in waves.
 
+const WallGrid := preload("res://scripts/wall_grid.gd")
 @export var team := 1
 @export var enemy_team := 0
 @export var first_attack_after := 420.0
@@ -158,7 +159,12 @@ func _manage_army(army: Array[Unit]) -> void:
 	if _elapsed >= _next_attack and army.size() >= wave_size:
 		var target := _enemy_target(home)
 		if target != Vector3.INF:
-			Formation.move(army, target, true)
+			var breach := _breach_target(home, target)
+			if breach:
+				for soldier in army:
+					soldier.order_attack(breach)
+			else:
+				Formation.move(army, target, true)
 			_wave += 1
 			_next_attack = _elapsed + 180.0
 			GameState.message.emit("Der Gegner greift an!")
@@ -169,6 +175,31 @@ func _manage_army(army: Array[Unit]) -> void:
 		var stragglers := idle.filter(func(u): return u.position.distance_to(rally) > 14.0)
 		if stragglers.size() > 0:
 			Formation.move(stragglers, rally)
+
+
+## Which wall piece a wave should knock down to get at its goal, or null when nothing stands
+## between the two. Without this the wave marches on the goal and whichever soldier bumps
+## into a wall hits that one, so a block spreads itself along the whole run instead of
+## opening a single hole.
+func _breach_target(from: Vector3, goal: Vector3) -> Building:
+	var start := Vector2(from.x, from.z)
+	var end := Vector2(goal.x, goal.z)
+	var best: Building = null
+	var best_score := INF
+	for b in Building.all_buildings:
+		if b.team != enemy_team or not b.is_alive() or not b.is_wall():
+			continue
+		var centre := b.footprint.get_center()
+		var aside := centre.distance_to(Geometry2D.get_closest_point_to_segment(centre, start, end))
+		if aside > WallGrid.TILE * 1.5:
+			continue  # not between the wave and where it is going - worth no detour
+		# Of the pieces in the way, the one that falls soonest: a segment is thinner than a
+		# gate, and one that is already battered is cheaper still than starting fresh.
+		var score := b.hit_points + aside * 100.0
+		if score < best_score:
+			best_score = score
+			best = b
+	return best
 
 
 func _home() -> Vector3:
@@ -182,7 +213,9 @@ func _enemy_target(from: Vector3) -> Vector3:
 	var best := Vector3.INF
 	var best_distance := INF
 	for b in Building.all_buildings:
-		if b.team != enemy_team or not b.is_alive():
+		# Walls are never the goal of a wave: the wave marches on what they protect, and
+		# whatever wall or gate ends up in the way is attacked by the soldiers that reach it.
+		if b.team != enemy_team or not b.is_alive() or b.is_wall():
 			continue
 		var d := from.distance_to(b.global_position)
 		if d < best_distance:

@@ -7,12 +7,14 @@ extends Node3D
 ##   --frames=<n>            frames to wait before the snapshot (default 90)
 ##   --cam=<x>,<z>,<yaw°>,<distance>,<pitch°>   initial camera placement
 ##   --demo-move=<x>,<z>     select the blue soldiers and attack-move there
-##   --demo-select=<what>    army | workers | barracks | towncenter | heromode | halfbox | squads | rally | engage | minimap | tower | sounds
+##   --quit-when-done        leave as soon as --demo-select=walls has run its checks
+##   --demo-select=<what>    army | workers | barracks | towncenter | heromode | halfbox | squads | rally | engage | minimap | tower | walls | wallchain | sounds
 ##   --hero-action=<what>    with --demo-select=heromode: run | attack | special | bow | duel | abilities
 ##   --show-health=1         always show hit point bars
 ##   --perf=<seconds>        log the frame budget every few seconds
 ##   --timescale=<f>         speed up the simulation (e.g. to watch the computer player)
 
+const WallGrid := preload("res://scripts/wall_grid.gd")
 const TERRAIN_SHADER := preload("res://shaders/terrain.gdshader")
 const SelectionController := preload("res://scripts/selection_controller.gd")
 const SquadManager := preload("res://scripts/squad_manager.gd")
@@ -29,12 +31,15 @@ const TOWER := "bld_ym1x1tower_00"
 const TOWN_CENTER := "bld_ygmptowncenter"
 const BARRACKS := "bld_ygmpbarracks_02"
 const STABLE := "bld_ygmpstable"
+const WALL := "wall_ymstraight_02"
+const GATE := "wall_ymgateleft_00"
 const MAP_HALF := 150.0
 
 var _args := {}
 var _region: NavigationRegion3D
 var _navmesh: NavigationMesh
 var _rebake_pending := false
+var _rebake_again := false
 var _selection: Control
 
 @onready var camera_rig: Node3D = $CameraRig
@@ -174,6 +179,9 @@ func _spawn_forest(center: Vector3, spread: float, count: int) -> void:
 ## Re-bakes the navmesh with every building footprint and gold mine cut out.
 func rebuild_navigation(immediate := false) -> void:
 	if _rebake_pending:
+		# A bake is already running with the buildings as they were when it started, so the
+		# ones added since would be missing: remember to bake again once it is through.
+		_rebake_again = true
 		return
 	const CELL := 0.3
 	var map := get_world_3d().navigation_map
@@ -184,6 +192,10 @@ func rebuild_navigation(immediate := false) -> void:
 	_navmesh.agent_radius = 0.6
 	_navmesh.agent_height = 2.0
 	_navmesh.agent_max_climb = 0.25
+	# Buildings go in as solid boxes a little lower than a man is tall (see _add_obstruction).
+	# Without this filter recast leaves the floor under them walkable, however little head
+	# room is left, and nothing a player builds would block anybody.
+	_navmesh.filter_walkable_low_height_spans = true
 	_navmesh.filter_baking_aabb = AABB(Vector3(-MAP_HALF, -1, -MAP_HALF), Vector3(MAP_HALF * 2, 3, MAP_HALF * 2))
 	var source := NavigationMeshSourceGeometryData3D.new()
 	var h := MAP_HALF
@@ -191,7 +203,11 @@ func rebuild_navigation(immediate := false) -> void:
 		Vector3(-h, 0, -h), Vector3(h, 0, -h), Vector3(h, 0, h),
 		Vector3(-h, 0, -h), Vector3(h, 0, h), Vector3(-h, 0, h)]), Transform3D.IDENTITY)
 	for building in Building.all_buildings:
-		_add_obstruction(source, building.footprint)
+		# A gateway stays walkable. One navmesh serves every team, so "passable for its
+		# owner, solid for everyone else" cannot come out of the bake: enemies are stopped
+		# at the closed gate in Unit._gate_in_the_way() instead.
+		if not building.is_gate():
+			_add_obstruction(source, building.footprint)
 	for node in ResourceNode.all_nodes:
 		if node.kind == "gold":
 			var p := Vector2(node.global_position.x, node.global_position.z)
@@ -203,13 +219,68 @@ func rebuild_navigation(immediate := false) -> void:
 		_rebake_pending = true
 		NavigationServer3D.bake_from_source_geometry_data_async(_navmesh, source, func():
 			_region.navigation_mesh = _navmesh
-			_rebake_pending = false)
+			_rebake_pending = false
+			if _rebake_again:
+				_rebake_again = false
+				# Not from inside the bake's own callback: starting the next bake there
+				# produces a mesh with the obstructions missing.
+				rebuild_navigation.call_deferred())
 
 
+## A left click on the ground at a world point, as the placement code sees it.
+func _click_at(point: Vector3) -> void:
+	var camera := get_viewport().get_camera_3d()
+	assert(not camera.is_position_behind(point), "the camera is not looking at %v" % point)
+	var motion := InputEventMouseMotion.new()
+	motion.position = camera.unproject_position(point)
+	_selection._placement_input(motion)
+	assert(_selection._ghost.global_position.distance_to(point) < WallGrid.TILE,
+		"the click at %v landed on the ground at %v" % [point, _selection._ghost.global_position])
+	_selection._placement_input(_mouse_button(MOUSE_BUTTON_LEFT))
+
+
+func _mouse_button(which: int) -> InputEventMouseButton:
+	var event := InputEventMouseButton.new()
+	event.button_index = which
+	event.pressed = true
+	return event
+
+
+## Waits until no navmesh bake is outstanding any more and the navigation server has taken
+## the result. A bake runs off the main thread and the server only picks the region's new
+## mesh up at one of its next syncs, so asking for a path before that reads the old map.
+func _await_navigation() -> void:
+	while _rebake_pending or _rebake_again:
+		await get_tree().process_frame
+	# The region hands its new mesh to the server on the next sync, and only then is there
+	# anything for a forced update to work with.
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	NavigationServer3D.map_force_update(get_world_3d().navigation_map)
+	await get_tree().physics_frame
+
+
+## Takes a building's ground out of the walkable floor. This used to be a projected
+## obstruction, which only works when the bake runs synchronously - the asynchronous bake
+## drops them without a word, so a building founded during play never blocked anything. A
+## solid box of real geometry survives both, and it has to stay inside filter_baking_aabb.
 static func _add_obstruction(source: NavigationMeshSourceGeometryData3D, box: Rect2) -> void:
-	source.add_projected_obstruction(PackedVector3Array([
-		Vector3(box.position.x, 0, box.position.y), Vector3(box.end.x, 0, box.position.y),
-		Vector3(box.end.x, 0, box.end.y), Vector3(box.position.x, 0, box.end.y)]), -0.5, 4.0, true)
+	const BOTTOM := -0.5
+	const TOP := 1.8
+	var corners := [Vector2(box.position.x, box.position.y), Vector2(box.end.x, box.position.y),
+		Vector2(box.end.x, box.end.y), Vector2(box.position.x, box.end.y)]
+	var faces := PackedVector3Array()
+	for i in 4:
+		var a: Vector2 = corners[i]
+		var b: Vector2 = corners[(i + 1) % 4]
+		faces.append_array([Vector3(a.x, BOTTOM, a.y), Vector3(b.x, BOTTOM, b.y), Vector3(b.x, TOP, b.y),
+			Vector3(a.x, BOTTOM, a.y), Vector3(b.x, TOP, b.y), Vector3(a.x, TOP, a.y)])
+	for height in [BOTTOM, TOP]:
+		faces.append_array([
+			Vector3(box.position.x, height, box.position.y), Vector3(box.end.x, height, box.position.y),
+			Vector3(box.end.x, height, box.end.y), Vector3(box.position.x, height, box.position.y),
+			Vector3(box.end.x, height, box.end.y), Vector3(box.position.x, height, box.end.y)])
+	source.add_faces(faces, Transform3D.IDENTITY)
 
 
 # --- automated checks -------------------------------------------------------
@@ -245,6 +316,110 @@ func _demo_select() -> void:
 				w.selected = true
 			GameState.player(0)["wood"] += 400
 			_selection.place_building(STABLE, Vector3(-30, 0, 30), PI)
+		"walls":
+			# A finished wall segment has to close the ground it stands on, while the gateway
+			# of a gate stays open - and an enemy that tries to use it is stopped in front of
+			# it and starts hitting it instead.
+			await get_tree().create_timer(0.5).timeout
+			# Off in an empty corner of the map, so no army from either base interferes.
+			var line := WallGrid.run(Vector3(60, 0, 0), Vector3(115, 0, 0))
+			# The gate is two tiles wide, so it takes the place of two segments of the run.
+			var middle := line.size() / 2
+			for i in line.size():
+				if i == middle or i == middle + 1:
+					continue
+				_place_building(WALL, 0, line[i], 0.0)
+			var gate := _place_building(GATE, 0, (line[middle] + line[middle + 1]) * 0.5, 0.0)
+			rebuild_navigation(true)
+			await _await_navigation()
+			print("%d tiles over %.0f m, %.1f x %.1f each, gate at x=%.1f" % [line.size(),
+				line[-1].x - line[0].x, gate.footprint.size.x, gate.footprint.size.y, gate.global_position.x])
+			# That a run really closes the ground is shown by --demo-select=wallchain, which
+			# walls a yard in. Here the gate is the point: shut to a stranger, open to its
+			# own men. Whether a man gets through is a question only a man can answer -
+			# map_get_path hands back the plain straight line when it finds no way at all,
+			# which reads exactly like an open run.
+			var raider := Unit.create("men_yminfantry_l1_02", 1, RED)
+			raider.position = gate.global_position + Vector3(0, 0, -14)
+			add_child(raider)
+			raider.order_move(gate.global_position + Vector3(0, 0, 18))
+			await get_tree().create_timer(8.0).timeout
+			print("the stranger stopped %.1f m short of the gateway, went for %s, gate down to %.0f of %.0f hit points" % [
+				gate.footprint.position.y - raider.position.z,
+				"the gate" if raider._target == gate else str(raider._target),
+				gate.hit_points, gate.max_hit_points])
+			assert(raider.position.z < gate.footprint.position.y, "the stranger walked into the gateway")
+			assert(raider._target == gate, "the stranger is not going for the gate")
+			assert(gate.hit_points < gate.max_hit_points, "the stranger is not hitting the gate")
+			raider.queue_free()
+			await get_tree().process_frame
+			# One of its owner's men brings the gate open and walks through it.
+			var walker := Unit.create("men_yminfantry_l1_02", 0, BLUE)
+			walker.position = gate.global_position + Vector3(0, 0, -11)
+			add_child(walker)
+			walker.order_move(gate.global_position + Vector3(0, 0, 12))
+			await get_tree().create_timer(5.0).timeout
+			var open_for_him := gate.is_gate_open()
+			await get_tree().create_timer(9.0).timeout
+			print("on his way the gate stood %s; he got to z=%.1f of %.1f, and it is %s behind him" % [
+				"open" if open_for_him else "shut", walker.position.z, gate.global_position.z + 12.0,
+				"open" if gate.is_gate_open() else "shut again"])
+			assert(open_for_him, "the gate stayed shut for its own side")
+			assert(walker.position.z > gate.global_position.z, "its own gateway did not let a man through")
+			assert(not gate.is_gate_open(), "the gate did not shut behind him")
+			if _args.has("quit-when-done"):
+				get_tree().quit()
+		"wallchain":
+			# The original's way of building a wall: one click sets the start, every click
+			# after it runs the wall up to that point and carries on from there, and only
+			# right click ends it. Four clicks have to close a yard, with the two pairs of
+			# sides facing a quarter turn apart.
+			await get_tree().create_timer(0.5).timeout
+			GameState.player(0)["gold"] += 4000
+			GameState.player(0)["wood"] += 4000
+			# The clicks go through the real placement code, which turns a screen position
+			# into a ground point - so the camera has to be looking at the building site.
+			camera_rig.position = Vector3(78, 0, 0)
+			camera_rig._yaw = 0.0
+			camera_rig.distance = 120.0
+			camera_rig._target_distance = 120.0
+			camera_rig.pitch_degrees = 55.0
+			await get_tree().process_frame
+			var corners := [Vector3(60, 0, -18), Vector3(96, 0, -18), Vector3(96, 0, 18),
+				Vector3(60, 0, 18), Vector3(60, 0, -18)]
+			_selection.begin_placement(WALL)
+			for corner in corners:
+				_click_at(corner)
+			print("placing after four legs: %s" % _selection.is_placing())
+			assert(_selection.is_placing(), "the chain ended on its own instead of carrying on")
+			_selection._placement_input(_mouse_button(MOUSE_BUTTON_RIGHT))
+			var built: Array = Building.all_buildings.filter(func(b): return b.is_wall() and b.team == 0)
+			# A wall only closes the ground once it stands: finish the run outright.
+			for b in built:
+				b.add_construction(b.build_time)
+			var yaws := {}
+			for b in built:
+				yaws[snappedf(b.global_rotation.y, 0.01)] = int(yaws.get(snappedf(b.global_rotation.y, 0.01), 0)) + 1
+			print("%d segments around a 36 x 36 m yard, facings: %s" % [built.size(), yaws])
+			assert(built.size() >= 20, "only %d segments went up" % built.size())
+			assert(yaws.size() == 2, "the segments do not turn with the run: %s" % yaws)
+			assert(not _selection.is_placing(), "right click did not end the chain")
+			rebuild_navigation(true)
+			await _await_navigation()
+			# Whether a yard is really closed is a question about units, not about path
+			# lengths: an unreachable goal makes map_get_path hand back the straight line
+			# between the two points, which reads exactly like a clear run. So a soldier is
+			# put in the yard and told to leave it.
+			var walled_in := Unit.create("men_yminfantry_l1_02", 0, BLUE)
+			walled_in.position = Vector3(78, 0, 0)
+			add_child(walled_in)
+			walled_in.order_move(Vector3(78, 0, 60))
+			await get_tree().create_timer(10.0).timeout
+			const NORTH_SIDE := 18.6
+			print("the soldier set to walk out of the yard got to z=%.1f of 60" % walled_in.position.z)
+			assert(walled_in.position.z < NORTH_SIDE, "the soldier walked out of the closed yard to z=%.1f" % walled_in.position.z)
+			if _args.has("quit-when-done"):
+				get_tree().quit()
 		"member":
 			# Simulated click on a single soldier: the whole group must end up selected.
 			await get_tree().create_timer(1.2).timeout
@@ -630,9 +805,10 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 func _parse_args() -> void:
 	for arg in OS.get_cmdline_user_args():
-		if arg.begins_with("--") and "=" in arg:
-			var kv := arg.substr(2).split("=", true, 1)
-			_args[kv[0]] = kv[1]
+		if not arg.begins_with("--"):
+			continue
+		var kv := arg.substr(2).split("=", true, 1)
+		_args[kv[0]] = kv[1] if kv.size() > 1 else "1"
 
 
 func _take_snapshot() -> void:
