@@ -355,6 +355,8 @@ func add_construction(amount: float) -> void:
 	_update_bar()
 	if is_complete():
 		_man_the_walls()
+		if team == GameState.human_team:
+			Audio.building_complete(definition_id)
 
 
 ## Citizens repairing a finished building.
@@ -366,11 +368,13 @@ func add_repair(amount: float) -> bool:
 	return true
 
 
-func take_damage(amount: float, _attacker) -> void:
+func take_damage(amount: float, attacker) -> void:
 	if _dead:
 		return
 	hit_points -= amount
 	_update_bar()
+	if team == GameState.human_team and attacker and is_instance_valid(attacker) and attacker.team != team:
+		Audio.under_attack()
 	if hit_points <= 0.0:
 		_destroy()
 
@@ -399,11 +403,14 @@ func _process(delta: float) -> void:
 			var grown := Building.replace_with(self, str(entry["becomes"]))
 			if grown and team == GameState.human_team:
 				GameState.message.emit("%s fertiggestellt" % grown.display_name)
+				Audio.building_complete(grown.definition_id)
 			get_tree().current_scene.call("rebuild_navigation")
 			return
 		var count := int(entry.get("count", 1))
 		for i in count:
 			_spawn(entry["unit"])
+		if team == GameState.human_team:
+			Audio.trained(str(entry["unit"]), global_position)
 		if team == GameState.human_team:
 			var name: String = Assets.unit_def(entry["unit"]).get("stats", {}).get("name", "Einheit")
 			GameState.message.emit("%s ausgebildet" % name if count == 1 else "%d %s ausgebildet" % [count, name])
@@ -439,6 +446,7 @@ func _shoot(delta: float) -> void:
 			shooter.global_rotation.y = atan2(-offset.x, -offset.z)
 		_play_defender(shooter, "attack")
 		from = shooter.global_position + Vector3.UP * 1.2
+	Audio.effect("bow", from, -6.0)
 	var projectile := preload("res://scripts/projectile.gd").new()
 	get_parent().add_child(projectile)
 	var multiplier := GameState.damage_multiplier(family, best.family, false)

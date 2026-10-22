@@ -1,0 +1,21 @@
+{
+  "_comment": "Hero mode: what each of Alexander's attacks does and what it costs him. The damage values are the original's - it models every attack as its own dbobjects record: 'Alexander Melee - 3rd Person' (150, twice what he does under RTS control), 'Alexander Archer - 3rd Person' (700) and 'Alexander Archer - Marksman' (1000). Stamina itself is nowhere in the data files, so the numbers below are tuned by hand: they follow the rule that the heavier the blow, the more it takes out of him. Same for the heavy melee blow, which has an animation in the original (alex_3p_msatck) but no record of its own.",
+
+  "stamina": {
+    "base": 100.0,
+    "per_level": 20.0,
+    "regain_per_s": 14.0,
+    "rest_after_attack_s": 0.7,
+    "block_cost_per_hit": 6.0
+  },
+
+  "damage_per_level": 0.08,
+
+  "attacks": {
+    "swing":   {"damage": 150.0,  "stamina": 8.0,  "name": "Hieb"},
+    "heavy":   {"damage": 330.0,  "stamina": 26.0, "name": "Schwerer Schlag"},
+    "special": {"damage": 150.0,  "stamina": 45.0, "name": "Spezialangriff"},
+    "arrow":   {"damage": 700.0,  "stamina": 20.0, "name": "Pfeil"},
+    "aimed":   {"damage": 1000.0, "stamina": 34.0, "name": "Gezielter Schuss"}
+  }
+}

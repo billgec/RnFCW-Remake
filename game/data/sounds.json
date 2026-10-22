@@ -1,0 +1,96 @@
+{
+  "_comment": "Which of the original's sounds go with what. File names are patterns ('*' for any run of characters) against assets/original/sounds/voice and sounds/sfx; every match is one variant and a random one is played. The original ties sounds to objects in db/dbsounds and db/dbsoundgroups, but its file names spell out what each sound is, so this table is kept readable instead. Voices are the Greek set (A_VO_G), deaths are shared by everybody (A_VO_ALL). 'select' is checked top to bottom against a unit's definition and line, first match wins.",
+
+  "voice": {
+    "select": [
+      ["alexander", "vo_g_alexander_ls*"],
+      ["spartan", "vo_g_spartan*"],
+      ["cav", "vo_g_cavalry*"],
+      ["javelin", "vo_g_javelin*"],
+      ["archer", "vo_g_archer*"],
+      ["spear", "vo_g_spearman*"],
+      ["infantry", "vo_g_swordsman*"],
+      ["sword", "vo_g_swordsman*"],
+      ["worker", "vo_g_worker*"],
+      ["citizen", "vo_g_worker*"],
+      ["ballist", "vo_g_ballistae*"],
+      ["fire", "vo_g_fire_raiser*"],
+      ["ladder", "vo_g_ladder_team*"],
+      ["trainer", "vo_g_trainer*"]
+    ],
+    "group": "vo_g_group_select*",
+    "command": {
+      "move": "vo_g_g_command_normal*",
+      "move_one": "vo_g_s_command_normal*",
+      "attack": "vo_g_g_command_attack*",
+      "charge": "vo_g_g_command_charge*"
+    },
+    "complete": [
+      ["towndefense", "vo_g_town_defense_complete*"],
+      ["towncenter", "vo_g_town_center_complete*"],
+      ["tentsettlement", "vo_g_settlement_complete*"],
+      ["settlement", "vo_g_settlement_complete*"],
+      ["tower", "vo_g_tower_complete*"],
+      ["barracks", "vo_g_barracks_complete*"],
+      ["archeryrange", "vo_g_archery_range_complete*"],
+      ["stable", "vo_g_stable_complete*"],
+      ["spartanacademy", "vo_g_spartan_academy_complete*"],
+      ["governmentcenter", "vo_g_government_center_complete*"],
+      ["bazaar", "vo_g_bazaar_complete*"],
+      ["market", "vo_g_market_complete*"],
+      ["statue", "vo_g_statue_complete*"],
+      ["granary", "vo_g_granary_complete*"],
+      ["dock", "vo_g_dock_complete*"]
+    ],
+    "alert": {
+      "gold": "vo_g_no_gold*",
+      "wood": "vo_g_no_wood*",
+      "glory": "vo_g_no_glory*",
+      "resources": "vo_g_no_resources*",
+      "under_attack": "vo_g_under_attack*",
+      "hero_returned": "vo_g_hero_returned*",
+      "gold_depleted": "vo_g_goldmine_depleted*",
+      "formation": "vo_gr_formation_create*",
+      "charge": "vo_g_charge_yell*"
+    },
+    "death": "vo_all_death_*"
+  },
+
+  "sfx": {
+    "swing": "sword_whoosh*",
+    "hero_swing": "combo_sword_whoosh*",
+    "hit_sword": "sword_impact_metal*",
+    "hit_spear": "spear_impact_metal*",
+    "hit_flesh": "sword_impact_flesh*",
+    "hit_hero": "hero_sword_impact_metal*",
+    "hit_building": "hero_sword_impact_stone*",
+    "bow": "bow_pullback*",
+    "arrow_fly": "arrow_whoosh*",
+    "arrow_hit": "arrow_flesh_impact*",
+    "arrow_miss": "arrow_wood_impact*",
+    "death": "human_splat*",
+    "chop": "chop*",
+    "mine": "mine*",
+    "hammer": "hammer_impact_wood*",
+    "trained": [
+      ["cav", "create_cavalry*"],
+      ["javelin", "create_archer*"],
+      ["archer", "create_archer*"],
+      ["spear", "create_spearman*"],
+      ["infantry", "create_swordsman*"],
+      ["sword", "create_swordsman*"],
+      ["spartan", "create_swordsman*"],
+      ["worker", "create_citizen*"],
+      ["citizen", "create_citizen*"],
+      ["ballist", "create_siege*"],
+      ["fire", "create_siege*"],
+      ["ladder", "create_siege*"]
+    ],
+    "hero_enter": "hero_enter*",
+    "hero_exit": "hero_exit*",
+    "hero_back": "hero_resurrected*",
+    "hero_death": "death_hero.wav",
+    "bow_pickup": "bow_pickup*",
+    "tree_fall": "tree_break*"
+  }
+}

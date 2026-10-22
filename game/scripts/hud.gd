@@ -52,7 +52,10 @@ var _hero_name: Label
 var _hero_hp: ProgressBar
 var _hero_hp_text: Label
 var _hero_special: ProgressBar
+var _hero_stamina: ProgressBar
+var _hero_stamina_text: Label
 var _hero_retinue: Label
+var _hero_hint: Label
 var _refresh_timer := 0.0
 
 
@@ -685,7 +688,13 @@ func _update_hero_overlay() -> void:
 	_hero_hp.value = maxf(hero.hit_points, 0.0)
 	_hero_hp_text.text = "%d / %d" % [maxf(hero.hit_points, 0.0), hero.max_hit_points]
 	_hero_special.value = hero_mode.special_ready() * 100.0
-	_hero_retinue.text = "%d Gefolge" % hero_mode.retinue_size()
+	_hero_stamina.max_value = hero_mode.stamina_max()
+	_hero_stamina.value = hero_mode.stamina()
+	_hero_stamina_text.text = "%d / %d" % [hero_mode.stamina(), hero_mode.stamina_max()]
+	_hero_retinue.text = "%s · %d Gefolge" % ["Bogen" if hero_mode.using_bow() else "Schwert",
+		hero_mode.retinue_size()]
+	_hero_hint.text = ("Links Schuss · Rechts gezielt · Q Schwert" if hero_mode.using_bow()
+		else "Links Hieb · Shift+Links schwerer Schlag · Rechts Block · Q Bogen")
 
 
 func _build_hero_overlay() -> void:
@@ -746,6 +755,23 @@ func _build_hero_overlay() -> void:
 	_style_label(_hero_hp_text, 14, TEXT)
 	hp_row.add_child(_hero_hp_text)
 
+	var stamina_row := HBoxContainer.new()
+	stamina_row.add_theme_constant_override("separation", 8)
+	column.add_child(stamina_row)
+	_hero_stamina = ProgressBar.new()
+	_hero_stamina.show_percentage = false
+	_hero_stamina.custom_minimum_size = Vector2(500, 10)
+	_hero_stamina.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var stamina_fill := StyleBoxFlat.new()
+	stamina_fill.bg_color = Color(0.35, 0.62, 0.9)
+	stamina_fill.set_corner_radius_all(3)
+	_hero_stamina.add_theme_stylebox_override("fill", stamina_fill)
+	_hero_stamina.add_theme_stylebox_override("background", back)
+	stamina_row.add_child(_hero_stamina)
+	_hero_stamina_text = Label.new()
+	_style_label(_hero_stamina_text, 13, DIM)
+	stamina_row.add_child(_hero_stamina_text)
+
 	var special_row := HBoxContainer.new()
 	special_row.add_theme_constant_override("separation", 8)
 	column.add_child(special_row)
@@ -765,11 +791,10 @@ func _build_hero_overlay() -> void:
 	_hero_special.add_theme_stylebox_override("background", back)
 	special_row.add_child(_hero_special)
 
-	var hint := Label.new()
-	hint.text = "WASD laufen · Maus umsehen · Links Angriff · Rechts Block · Leertaste Spezial · Esc zurück"
-	_style_label(hint, 13, DIM)
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	column.add_child(hint)
+	_hero_hint = Label.new()
+	_style_label(_hero_hint, 13, DIM)
+	_hero_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	column.add_child(_hero_hint)
 
 
 # --- helpers ----------------------------------------------------------------

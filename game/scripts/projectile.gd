@@ -49,7 +49,10 @@ func _process(delta: float) -> void:
 		if is_instance_valid(_target) and _target.is_alive():
 			hit = _target is Building or _target.global_position.distance_to(_end - Vector3.UP * 1.1) < 1.6
 		if hit:
+			Audio.effect("hit_building" if _target is Building else "arrow_hit", global_position, -6.0)
 			_target.take_damage(_damage, _shooter if is_instance_valid(_shooter) else null)
+		else:
+			Audio.effect("arrow_miss", global_position, -10.0)
 		queue_free()
 
 

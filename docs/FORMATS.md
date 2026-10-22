@@ -347,10 +347,44 @@ object state, block 6 effects.
   then indented `Condition[(param)] true(NextState)` lines, `allof(...)` to combine
   conditions, `//` for comments.
 * Random map scripts (`.rmv`) are plain text as well.
-* Sounds are ordinary WAV and MP3; cut-scenes are Bink video (`.bik`).
+* Sounds are ordinary WAV and MP3; cut-scenes are Bink video (`.bik`). They live in two
+  places: music (`Data\Music\Song1\*.mp3` - Ambient01-15, Battle01-15, Aftermath1, Mourn,
+  Victory, EmpiresTheme and one `<Civ>LevelUp` fanfare per civilization) and the voices
+  (`Data\Sounds\High\A_VO_<civ>-*.wav`, one set per civilization plus `A_VO_ALL` for the
+  shared death screams) sit loose in the install; effects are in `data.ssa` under
+  `sounds\high\a_*.wav`. Objects are tied to sounds through `db\dbsounds.dat` (records
+  with a name and a file) and `db\dbsoundgroups.dat` (46 groups such as "Greek Commands
+  Attack" or "Death Screams"), but the file names describe every recording well enough
+  to map them by hand.
 * Display names live in `Language2.dll` as ordinary Win32 `RT_STRING` resources (4631 of
   them), referenced by `dbobjects +296`.
 * Graphics options are stored in the Windows registry, not in a config file.
+
+### The hero's attacks
+
+The hero is not one object with one attack: the original gives every way he fights its own
+`dbobjects` record, all sharing his 1200 hit points.
+
+| Record | Name | Damage | Definition |
+|---|---|---|---|
+| 99 | Alexander Melee - **RTS mode** | 75 | `men_yMalexanderMELEE_02` |
+| 2380 | Alexander Melee - **3rd Person** | 150 | `men_yMalexanderMELEE_02` |
+| 2379 | Alexander Archer - 3rd Person | 700 | `men_yMalexanderRANGED_02` |
+| 188 | Alexander Archer - Volley | 700 | `men_yMalexanderRANGED_02` |
+| 190 | Alexander Archer - Marksman | 1000 | `men_yMalexanderRANGED_02` |
+| 189 | Alexander Archer - Burning Pitch | 1300 | `men_yMalexanderRANGED_02` |
+| 191 | Alexander Archer - Uber Bow | 400 | `men_yMalexanderRANGED_02` |
+| 6 | Alexander Archer - Herculean | 800 | `men_yMalexanderRANGED_HBOW` |
+
+So he hits twice as hard once you take him over yourself, and the bow is a different body
+with an animation set of its own: `heross_3p_ratck{st,up,dn}` draw and loose at three
+elevations, `heross_3p_rrun{st,up,dn}` run with the bow, `heross_3p_rrun<dir>atck*` shoot
+while running, `heross_3p_rspecial1` its special. The sword set has one heavier swing,
+`alex_3p_msatck` (1.9 s against 0.6 s for the ordinary `heross_3p_mpatck1/2s`).
+
+Stamina is **not** in the data files - no table mentions it, and the records differ only in
+damage, range (`+132`), sight (`+136`) and rate (`+140`). Whatever drove it lives in the
+executable.
 
 ### Manned buildings and building upgrades
 

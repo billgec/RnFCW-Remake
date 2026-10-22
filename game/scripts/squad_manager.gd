@@ -125,6 +125,8 @@ func _update_membership() -> void:
 				for u in members:
 					_squad_of[u.get_instance_id()] = squad
 					u.holds_formation = true
+				if squad["team"] == GameState.human_team:
+					Audio.voice("alert/formation")  # "formation ready"
 
 
 # --- marching ---------------------------------------------------------------

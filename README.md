@@ -44,6 +44,7 @@ export RNF_DATA_SSA="/path/to/Rise And Fall/Data/data.ssa"   # optional, see con
 | H, or the hero's button | enter hero mode · Esc or H leaves it |
 | F5 | graphics quality: low · medium · high (saved) |
 | Minimap: left click/drag · right click | move the camera · send the selection there |
+| M | music on/off (saved) |
 
 ### Hero mode
 
@@ -51,9 +52,17 @@ export RNF_DATA_SSA="/path/to/Rise And Fall/Data/data.ssa"   # optional, see con
 |---|---|
 | WASD | run (the hero always faces the camera and strafes sideways) |
 | Mouse | look around · wheel: camera distance |
-| Left click | attack - repeated clicks chain into a combo |
-| Right click | raise the shield: much less damage taken, slower movement |
+| Q | swap sword for bow and back - two bodies with animation sets of their own |
+| Left click | sword: swing, repeated clicks chain into a combo · bow: shoot |
+| Shift + left click | sword: the heavy blow - more than twice the damage, much more stamina |
+| Right click | sword: raise the shield · bow: an aimed shot |
 | Space | special attack: sweeps everyone around the hero, then needs to recharge |
+
+Every blow costs stamina, and the heavier it is the more it takes; blocking costs stamina
+per hit stopped, and when nothing is left the guard breaks. Stamina comes back on its own
+after a short pause, and the hero's maximum grows with every level he gains
+(`game/data/hero.json` holds the numbers - the damage values are the original's, the
+stamina ones are not in its data files and are tuned by hand).
 
 ## What works
 
@@ -85,6 +94,13 @@ export RNF_DATA_SSA="/path/to/Rise And Fall/Data/data.ssa"   # optional, see con
   their own reach instead of peeling off one by one
 * A computer opponent that gathers, trains and attacks in waves
 * The original mouse pointers, switching with context (attack, wood, gold, build, repair, …)
+* The original's sound: every kind of soldier answers in its own Greek voice when picked,
+  groups call out when ordered, finished buildings, missing gold and attacks on your base
+  are announced; swords, arrows, axes, hammers and death screams come from where they
+  happen. Music follows the game like the original's does - quiet tracks while building
+  up, battle tracks while your men fight, the aftermath piece when it is over, the Greek
+  fanfare on every hero level, victory or lament at the end (`game/data/sounds.json` says
+  which recording belongs to what)
 * A minimap built the way the original built its own: the map is shown as a diamond inside
   the game's own stone frame, the terrain is a real top-down render of the ground and
   everything owned by a player is stamped over it as coarse squares in their colour

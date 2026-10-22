@@ -236,6 +236,7 @@ func _finish_selection(additive: bool) -> void:
 	elif picked.size() > 0 and selected_building:
 		selected_building.selected = false
 		selected_building = null
+	_answer(picked)
 	selection_changed.emit()
 
 
@@ -260,6 +261,7 @@ func _command(screen_point: Vector2, attack_move: bool) -> void:
 			return
 	if enemy:
 		_show_marker(enemy.global_position)
+		Audio.voice("command/attack")
 		# Ordered onto an enemy soldier, groups charge as blocks; buildings are walked up to
 		# directly, their footprint gives everyone a place to stand anyway.
 		if enemy is Unit and squads:
@@ -280,7 +282,19 @@ func _command(screen_point: Vector2, attack_move: bool) -> void:
 			return
 		units = units.filter(func(u): return not u.is_worker)
 	if point != null:
+		Audio.voice("command/charge" if attack_move else ("command/move" if units.size() > 1 else "command/move_one"))
 		order_selected_move(point, attack_move, units)
+
+
+## The men answer when they are picked: one of them in his own voice, a whole group with
+## the group's call.
+func _answer(units: Array) -> void:
+	if units.is_empty():
+		return
+	if units.size() > 1 and squads and not squads.squad_of(units[0]).is_empty():
+		Audio.group_select()
+	else:
+		Audio.select(units[0])
 
 
 ## Completes a selection: every group that any of these units belongs to comes along whole.
@@ -315,8 +329,10 @@ func _select_same_type_on_screen(screen_point: Vector2, additive: bool) -> void:
 			continue
 		if view.has_point(_camera.unproject_position(unit.global_position + Vector3.UP)):
 			picked.append(unit)
-	for unit in _with_whole_squads(picked):
+	var chosen := _with_whole_squads(picked)
+	for unit in chosen:
 		unit.selected = true
+	_answer(chosen)
 	selection_changed.emit()
 
 

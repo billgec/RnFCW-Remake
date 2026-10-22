@@ -170,6 +170,10 @@ func spend(team: int, cost: Dictionary) -> bool:
 				if players[team][r] < int(cost.get(r, 0)):
 					missing.append({"gold": "Gold", "wood": "Holz", "glory": "Ruhm"}[r])
 			message.emit("Nicht genug %s" % " und ".join(missing))
+			for r in RESOURCES:
+				if players[team][r] < int(cost.get(r, 0)):
+					Audio.voice("alert/" + r)  # "not enough gold" in the original's own voice
+					break
 		return false
 	for r in RESOURCES:
 		players[team][r] -= int(cost.get(r, 0))

@@ -5,6 +5,9 @@ extends Node3D
 ## buildings, and - for citizens - gathers resources and constructs buildings.
 
 signal died(unit: Unit)
+## Emitted with the damage that was aimed at this unit, before its own armour or a raised
+## shield takes anything off it - hero mode charges blocking to the hero's stamina.
+signal damaged(amount: float)
 
 enum State { IDLE, MOVE, ATTACK, GATHER, RETURN, BUILD, DEAD }
 
@@ -73,6 +76,9 @@ var _stuck_from := Vector3.ZERO
 var _repaths := 0
 var _ring: MeshInstance3D
 var _health_bar: Node3D
+var _alternate: Node3D          # second body (the hero's bow version)
+var _alternate_player: AnimationPlayer
+var _using_alternate := false
 
 static var all_units: Array[Unit] = []
 
@@ -215,12 +221,15 @@ func take_damage(amount: float, attacker) -> void:
 	if not is_alive():
 		return
 	hit_points -= amount * (1.0 - damage_reduction)
+	damaged.emit(amount)
 	_update_health_bar()
 	if attacker and is_instance_valid(attacker):
 		_last_attacker_team = attacker.team
 	if hit_points <= 0.0:
 		_die()
 		return
+	if team == GameState.human_team and attacker and is_instance_valid(attacker) and attacker.team != team:
+		Audio.under_attack()
 	if player_controlled:
 		return  # the player decides what to answer with
 	var busy: bool = state == State.ATTACK and _target != null and _target.is_alive()
@@ -327,10 +336,13 @@ func _release_attack() -> void:
 	if _target == null or not is_instance_valid(_target) or not _target.is_alive():
 		return
 	if ranged:
+		Audio.effect("bow", global_position, -4.0)
 		var projectile := Projectile.new()
 		get_parent().add_child(projectile)
 		projectile.launch(self, _target, global_position + Vector3.UP * 1.6, damage_against(_target))
 	else:
+		var sound := "hit_building" if _target is Building else ("hit_spear" if "spear" in line else "hit_sword")
+		Audio.effect(sound, _target.global_position, -3.0)
 		_target.take_damage(damage_against(_target), self)
 
 
@@ -361,6 +373,7 @@ func _update_gather(delta: float) -> void:
 	if _work_timer >= GATHER_INTERVAL[_resource.kind]:
 		_work_timer = 0.0
 		carry_kind = _resource.kind
+		Audio.effect("mine" if _resource.kind == "gold" else "chop", global_position, -10.0, 0.12)
 		carrying += _resource.harvest(1)
 		if carrying >= CARRY_CAPACITY:
 			_start_return()
@@ -419,6 +432,10 @@ func _update_build(delta: float) -> void:
 	_face(offset, delta)
 	if not _is_playing("build"):
 		_play("build", 0.2)
+	_work_timer += delta
+	if _work_timer >= 0.8:
+		_work_timer = 0.0
+		Audio.effect("hammer", global_position, -10.0, 0.12)
 	if _construction.is_complete():
 		_construction.add_repair(delta)
 	else:
@@ -431,6 +448,7 @@ func _update_build(delta: float) -> void:
 func resume_idle() -> void:
 	if not is_alive():
 		return
+	use_alternate_body(false)
 	player_controlled = false
 	damage_reduction = 0.0
 	_target = null
@@ -451,8 +469,38 @@ func turn_to(yaw: float, delta: float) -> void:
 	rotation.y = lerp_angle(rotation.y, yaw, 1.0 - exp(-12.0 * delta))
 
 
+## A second body for the same unit: hero mode swaps Alexander's sword for his bow, and the
+## two are different models with animation sets of their own.
+func add_alternate_body(id: String) -> void:
+	if _alternate != null or id == "":
+		return
+	_alternate = Assets.spawn_unit(id, team_color)
+	if _alternate == null:
+		return
+	add_child(_alternate)
+	_alternate.visible = false
+	_alternate_player = _alternate.find_child("AnimationPlayer", true, false)
+
+
+func has_alternate_body() -> bool:
+	return _alternate != null
+
+
+func use_alternate_body(on: bool) -> void:
+	if _alternate == null:
+		return
+	_using_alternate = on and is_alive()
+	_alternate.visible = _using_alternate
+	_model.visible = not _using_alternate
+
+
+func animation_player() -> AnimationPlayer:
+	return _alternate_player if _using_alternate and _alternate_player != null else _player
+
+
 func has_animation(anim: String) -> bool:
-	return _player != null and _player.has_animation(anim)
+	var player := animation_player()
+	return player != null and player.has_animation(anim)
 
 
 ## Plays an animation by its name in the model and returns its length in seconds. Looping
@@ -460,6 +508,7 @@ func has_animation(anim: String) -> bool:
 func play_animation(anim: String, blend := 0.15, speed := 1.0, loop := true) -> float:
 	if not has_animation(anim):
 		return 0.0
+	var _player := animation_player()
 	var animation := _player.get_animation(anim)
 	var mode := Animation.LOOP_LINEAR if loop else Animation.LOOP_NONE
 	if animation.loop_mode != mode:
@@ -500,6 +549,7 @@ func _die() -> void:
 	_target = null
 	all_units.erase(self)
 	_health_bar.alive = false
+	Audio.death(global_position)
 	died.emit(self)
 	var length := _play("death", 0.1)
 	await get_tree().create_timer(maxf(length - 0.1, 0.1)).timeout

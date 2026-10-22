@@ -7,8 +7,8 @@ extends Node3D
 ##   --frames=<n>            frames to wait before the snapshot (default 90)
 ##   --cam=<x>,<z>,<yaw°>,<distance>,<pitch°>   initial camera placement
 ##   --demo-move=<x>,<z>     select the blue soldiers and attack-move there
-##   --demo-select=<what>    army | workers | barracks | towncenter | heromode | halfbox | squads | rally | engage | minimap | tower
-##   --hero-action=<what>    with --demo-select=heromode: run | attack | special | duel
+##   --demo-select=<what>    army | workers | barracks | towncenter | heromode | halfbox | squads | rally | engage | minimap | tower | sounds
+##   --hero-action=<what>    with --demo-select=heromode: run | attack | special | bow | duel | abilities
 ##   --show-health=1         always show hit point bars
 ##   --perf=<seconds>        log the frame budget every few seconds
 ##   --timescale=<f>         speed up the simulation (e.g. to watch the computer player)
@@ -19,6 +19,7 @@ const SquadManager := preload("res://scripts/squad_manager.gd")
 const Hud := preload("res://scripts/hud.gd")
 const Minimap := preload("res://scripts/minimap.gd")
 const EnemyAI := preload("res://scripts/enemy_ai.gd")
+const Music := preload("res://scripts/music.gd")
 const HealthBar := preload("res://scripts/health_bar.gd")
 
 const BLUE := Color(0.15, 0.35, 0.9)
@@ -75,6 +76,9 @@ func _ready() -> void:
 	hud.hero_mode = hero_mode
 	hud.camera_rig = camera_rig
 	add_child(hud)
+	var music := Music.new()
+	music.name = "Music"
+	add_child(music)
 	var ai := EnemyAI.new()
 	add_child(ai)
 	GameState.match_over.connect(func(_w): GameState.set_speed(1.0))
@@ -340,6 +344,46 @@ func _demo_select() -> void:
 							other.definition_id, other.hit_points, other._defenders.size(),
 							other.attack_range, other.damage])
 				break
+		"sounds":
+			# Every entry of the sound table must load, the music must be running, and a
+			# fight must turn it to the battle tracks.
+			await get_tree().create_timer(1.0).timeout
+			var loaded := 0
+			var missing := []
+			var voice_table: Dictionary = Audio._table.get("voice", {})
+			var patterns := []
+			for pair in voice_table.get("select", []) + voice_table.get("complete", []):
+				patterns.append([Audio.VOICE_DIR, pair[1]])
+			for key in ["command", "alert"]:
+				for name in voice_table.get(key, {}):
+					patterns.append([Audio.VOICE_DIR, voice_table[key][name]])
+			patterns.append([Audio.VOICE_DIR, voice_table.get("group", "")])
+			patterns.append([Audio.VOICE_DIR, voice_table.get("death", "")])
+			for key in Audio._table.get("sfx", {}):
+				var entry = Audio._table["sfx"][key]
+				if entry is Array:
+					for pair in entry:
+						patterns.append([Audio.SFX_DIR, pair[1]])
+				else:
+					patterns.append([Audio.SFX_DIR, entry])
+			for item in patterns:
+				if Audio._pick(item[0], item[1]) != null:
+					loaded += 1
+				else:
+					missing.append(item[1])
+			print("sounds: %d of %d entries load, missing %s" % [loaded, patterns.size(), missing])
+			var music: Node = get_node("Music")
+			print("music: '%s' (%s)" % [music._last_track, music._mood])
+			for unit in Unit.all_units:
+				unit.selected = unit.team == 0 and not unit.is_worker
+			_selection.order_selected_move(Vector3(0, 0, -40), true)
+			for i in 20:
+				await get_tree().create_timer(4.0).timeout
+				var playing := Audio._effects.filter(func(p): return p.playing).size()
+				print("[t=%3ds] music '%s' (%s), %d effects sounding" % [(i + 1) * 4, music._last_track,
+					music._mood, playing])
+				if music._mood == "battle" and playing > 0:
+					break
 		"halfbox":
 			# Drag a box over only the front half of a group: all of it must end up selected.
 			await get_tree().create_timer(1.2).timeout
@@ -398,8 +442,12 @@ func _demo_select() -> void:
 					mode._attack()
 				"special":
 					mode._special()
+				"bow":
+					mode.switch_weapon()
 				"duel":
 					await _hero_duel(mode)
+				"abilities":
+					await _hero_abilities(mode)
 			print("hero mode active: %s, retinue %d" % [mode.active, mode.retinue_size()])
 		"builds":
 			await get_tree().create_timer(0.5).timeout
@@ -494,6 +542,47 @@ func _perf_loop() -> void:
 			RenderingServer.viewport_get_measured_render_time_gpu(viewport),
 			Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),
 			units, Performance.get_monitor(Performance.OBJECT_NODE_COUNT)])
+
+
+## Headless check of the hero's own attacks: what each one costs him and what it does.
+func _hero_abilities(mode: Node) -> void:
+	var enemies: Array[Unit] = []
+	for u in Unit.all_units:
+		if u.team == 1 and not u.is_worker and not u.is_hero:
+			enemies.append(u)
+	if enemies.is_empty():
+		return
+	var victim := enemies[0]
+	mode._hero.position = victim.position + Vector3(0, 0, 3.0)
+	camera_rig._yaw = 0.0
+	await get_tree().create_timer(0.4).timeout
+	print("level %d: stamina %.0f/%.0f" % [GameState.hero_level(0), mode.stamina(), mode.stamina_max()])
+	for kind in ["swing", "heavy"]:
+		var before := victim.hit_points
+		var stamina_before: float = mode.stamina()
+		mode._attack(kind)
+		await get_tree().create_timer(2.2).timeout
+		print("  %-6s -> %4.0f damage, %2.0f stamina (left %.0f)" % [kind, before - victim.hit_points,
+			stamina_before - mode.stamina(), mode.stamina()])
+		if not victim.is_alive():
+			victim = enemies[1] if enemies.size() > 1 else victim
+	mode.switch_weapon()
+	await get_tree().create_timer(0.4).timeout
+	print("  bow in hand: %s, aims at %s" % [mode.using_bow(),
+		mode._aim_target().display_name if mode._aim_target() else "nothing"])
+	for kind in ["arrow", "aimed"]:
+		var target = mode._aim_target()
+		if target == null:
+			break
+		var before: float = target.hit_points
+		var stamina_before: float = mode.stamina()
+		mode._attack(kind)
+		await get_tree().create_timer(3.5).timeout
+		print("  %-6s at %s (%.0f hp) -> %4.0f damage, %2.0f stamina (left %.0f)" % [kind,
+			target.display_name, before, before - target.hit_points,
+			stamina_before - mode.stamina(), mode.stamina()])
+	GameState.set_hero_level(0, 5)
+	print("level %d: stamina max %.0f" % [GameState.hero_level(0), mode.stamina_max()])
 
 
 func _log_loop() -> void:

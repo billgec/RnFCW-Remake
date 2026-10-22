@@ -20,6 +20,7 @@ Assets="*res://scripts/assets.gd"
 Cursors="*res://scripts/cursors.gd"
 GameState="*res://scripts/game_state.gd"
 Graphics="*res://scripts/graphics.gd"
+Audio="*res://scripts/audio.gd"
 
 [display]
 

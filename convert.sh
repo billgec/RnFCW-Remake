@@ -12,7 +12,7 @@ javac -d "$CLASSES" ${(f)"$(find "$HERE/converter/src" -name "*.java")"}
 
 UNITS=("$@")
 if (( ${#UNITS} == 0 )); then
-  UNITS=(men_ymjavelin men_ymarcher_02 men_ymalexandermelee_02 cav_ymspear_l1 men_ymworker_02 men_yminfantry_l1_02 men_ymspear_l1_02
+  UNITS=(men_ymjavelin men_ymarcher_02 men_ymalexandermelee_02 men_ymalexanderranged_02 cav_ymspear_l1 men_ymworker_02 men_yminfantry_l1_02 men_ymspear_l1_02
          bld_ymbarracks_02 bld_ymtowncenter_02)
 fi
 java -cp "$CLASSES" com.rnf.tools.Convert unit "$DATA_SSA" "$OUT" "${UNITS[@]}"
@@ -33,6 +33,8 @@ java -cp "$CLASSES" com.rnf.tools.Convert model "$DATA_SSA" "$OUT" 'models\sfx_y
 java -cp "$CLASSES" com.rnf.tools.ConvertEffect "$DATA_SSA" "$OUT" 'models\sfx_ymrallyflag.gr2' \
   'textures\sfx_ymrallyflag_t.dds' 'animations\miscellaneous\sfx_yrallyflag_anim.gr2'
 mkdir -p "$OUT/fonts" && cp "$HERE/../Rise And Fall/RAFC.ttf" "$OUT/fonts/rafc.ttf"
+# Music and voices sit loose next to data.ssa, the effects inside it (see ExportSounds).
+java -cp "$CLASSES" com.rnf.tools.ExportSounds "$DATA_SSA" "$OUT" G
 
 # Let Godot import the new files (and refresh its class registry).
 godot --headless --path "$HERE/game" --import >/dev/null 2>&1 || true
