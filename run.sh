@@ -9,6 +9,7 @@ if [[ "$1" == "test" ]]; then
   # them and so runs as a scene. Both are quiet when everything passes.
   godot --headless --path "$HERE/game" --script res://tests/test_walls.gd || exit 1
   godot --headless --path "$HERE/game" --script res://tests/test_formation.gd || exit 1
-  exec godot --headless --path "$HERE/game" res://tests/test_game.tscn
+  godot --headless --path "$HERE/game" res://tests/test_game.tscn || exit 1
+  exec godot --headless --path "$HERE/game" res://tests/test_units.tscn
 fi
 exec godot --path "$HERE/game"

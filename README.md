@@ -171,6 +171,10 @@ pipeline in `converter/src/com/rnf/`.
 * `game/tests/test_formation.gd` - the block a group marches in (`game/scripts/formation.gd`):
   how wide it stands, where each slot sits, who gets which slot, how several blocks line up
   side by side. The soldiers are stand-ins with nothing but a position and a radius.
+* `game/tests/test_units.tscn` - the rules a soldier goes by: the values he is built from,
+  what his blow is worth against a given enemy and against a wall, how far he looks for a
+  fight, what he does when he is hit, which target he picks, what a shut gate does to a
+  stranger, what an order does to him, and how a veteran steps into his place.
 * `game/tests/test_game.tscn` - the pieces as real buildings: their footprints, hit points
   and build times out of the original data, a gate's two leaves and the segments it
   swallows, where the computer opponent breaks through a wall, what a building's panel
