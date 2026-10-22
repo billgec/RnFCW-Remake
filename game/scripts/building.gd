@@ -161,14 +161,16 @@ func is_gate() -> bool:
 	return is_wall() and "gate" in definition_id
 
 
-## How many grid tiles the piece covers, in its own local axes. A gate is fixed at two
-## tiles wide because that is the span its two door leaves need; every other piece is
-## measured off its own model, so the siege platform comes out as the two by two it is.
+## How many grid tiles the piece covers, in its own local axes. Measuring the model does
+## not work here: battlements overhang the tile, and a mesh bounding box taken through a
+## rotated hierarchy is wider still, so a one tile segment measures closer to two. The
+## original's pieces come in three sizes and say which in their own name.
 func wall_tiles() -> Vector2i:
 	if is_gate():
-		return Vector2i(WallGrid.GATE_TILES, 1)
-	var size := compute_footprint(self).size + Vector2(1.6, 1.6)  # undo the overhang trim
-	return Vector2i(maxi(1, roundi(size.x / WallGrid.TILE)), maxi(1, roundi(size.y / WallGrid.TILE)))
+		return Vector2i(WallGrid.GATE_TILES, 1)  # the span its two door leaves need
+	if "seigeplat" in definition_id or "siegeplat" in definition_id:
+		return Vector2i(2, 2)
+	return Vector2i.ONE
 
 
 ## True while the gate stands open - its owner may walk through, nobody else.

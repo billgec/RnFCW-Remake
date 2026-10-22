@@ -164,17 +164,29 @@ and lighting are easiest to edit in the Godot editor itself (`./run.sh edit`).
 Gameplay lives in `game/scripts/*.gd`, balance in `game/data/bonuses.json`, the asset
 pipeline in `converter/src/com/rnf/`.
 
-`./run.sh test` runs the checks that need no running game - plain arithmetic such as the
-wall grid in `game/scripts/wall_grid.gd` - and is over in a second. What only a running
-world can answer (does a wall really take its ground out of the navmesh, does a gate open
-for its own men) is checked by the `--demo-select=` runs listed at the top of
-`game/scripts/main.gd`; those start the whole game and take a minute each, so they are for
-when that area changes, not for every edit:
+`./run.sh test` runs the checks and is over in a few seconds. There are two suites:
+
+* `game/tests/test_walls.gd` - the wall grid (`game/scripts/wall_grid.gd`): where the
+  segments of a leg land, which way they face, how much ground a piece covers. Plain
+  arithmetic that depends on nothing, so it runs as a bare script without even the autoloads.
+* `game/tests/test_game.tscn` - the pieces as real buildings: their footprints, hit points
+  and build times out of the original data, a gate's two leaves and the segments it
+  swallows, where the computer opponent breaks through a wall, what a building's panel
+  offers, and what things cost. It runs as a scene so the autoloads are there, but it
+  builds no skirmish.
+
+A failing check names itself and the run carries on, so one go lists everything that is
+wrong rather than only the first thing.
+
+What only a running world can answer - does a wall really take its ground out of the
+navmesh, does a gate open for its own men and shut behind them - is checked by the
+`--demo-select=` runs listed at the top of `game/scripts/main.gd`. Those start the whole
+game and take about a minute each, so they are for when that area changes, not for every edit:
 
 ```bash
-./run.sh test                                        # fast, no game
-godot --headless --path game -- --demo-select=walls --quit-when-done
-godot --headless --path game -- --demo-select=wallchain --quit-when-done
+./run.sh test                                                          # a few seconds
+godot --headless --path game -- --demo-select=walls --quit-when-done     # the gate
+godot --headless --path game -- --demo-select=wallchain --quit-when-done # a walled yard
 ```
 
 ## Credits and licensing
