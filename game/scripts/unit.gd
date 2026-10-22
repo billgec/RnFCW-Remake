@@ -594,6 +594,8 @@ func _follow_path(delta: float) -> bool:
 			_path_index += 1
 			continue
 		var direction := to_waypoint / distance
+		if _gate_in_the_way(direction):
+			return true  # stop in front of it; the idle scan then picks the gate as target
 		position += direction * minf(move_speed * delta, distance) + _separation() * delta
 		position.y = 0.0
 		position = NavigationServer3D.map_get_closest_point(get_world_3d().navigation_map, position)
@@ -628,6 +630,19 @@ func _check_stuck(delta: float) -> bool:
 		return false
 	_repaths = 0
 	return true
+
+
+## A shut enemy gate is a wall as far as this unit is concerned. The navmesh keeps the
+## gateway open so the gate's owner can use it, so the stop has to happen here: the unit
+## halts a step short and its own target scan then sends it against the gate.
+func _gate_in_the_way(direction: Vector3) -> Building:
+	if Building.all_gates.is_empty():
+		return null
+	var ahead := Vector2(position.x + direction.x * (radius + 0.3), position.z + direction.z * (radius + 0.3))
+	for gate in Building.all_gates:
+		if gate.team != team and gate.is_alive() and gate.footprint.has_point(ahead):
+			return gate
+	return null
 
 
 func _face(direction: Vector3, delta: float) -> void:

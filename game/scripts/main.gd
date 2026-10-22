@@ -7,7 +7,8 @@ extends Node3D
 ##   --frames=<n>            frames to wait before the snapshot (default 90)
 ##   --cam=<x>,<z>,<yaw°>,<distance>,<pitch°>   initial camera placement
 ##   --demo-move=<x>,<z>     select the blue soldiers and attack-move there
-##   --demo-select=<what>    army | workers | barracks | towncenter | heromode | halfbox | squads | rally | engage | minimap | tower | sounds
+##   --quit-when-done        leave as soon as --demo-select=walls has run its checks
+##   --demo-select=<what>    army | workers | barracks | towncenter | heromode | halfbox | squads | rally | engage | minimap | tower | walls | sounds
 ##   --hero-action=<what>    with --demo-select=heromode: run | attack | special | bow | duel | abilities
 ##   --show-health=1         always show hit point bars
 ##   --perf=<seconds>        log the frame budget every few seconds
@@ -29,6 +30,8 @@ const TOWER := "bld_ym1x1tower_00"
 const TOWN_CENTER := "bld_ygmptowncenter"
 const BARRACKS := "bld_ygmpbarracks_02"
 const STABLE := "bld_ygmpstable"
+const WALL := "wall_ymstraight_02"
+const GATE := "wall_ymgateleft_00"
 const MAP_HALF := 150.0
 
 var _args := {}
@@ -191,7 +194,11 @@ func rebuild_navigation(immediate := false) -> void:
 		Vector3(-h, 0, -h), Vector3(h, 0, -h), Vector3(h, 0, h),
 		Vector3(-h, 0, -h), Vector3(h, 0, h), Vector3(-h, 0, h)]), Transform3D.IDENTITY)
 	for building in Building.all_buildings:
-		_add_obstruction(source, building.footprint)
+		# A gateway stays walkable. One navmesh serves every team, so "passable for its
+		# owner, solid for everyone else" cannot come out of the bake: enemies are stopped
+		# at the closed gate in Unit._gate_in_the_way() instead.
+		if not building.is_gate():
+			_add_obstruction(source, building.footprint)
 	for node in ResourceNode.all_nodes:
 		if node.kind == "gold":
 			var p := Vector2(node.global_position.x, node.global_position.z)
@@ -204,6 +211,15 @@ func rebuild_navigation(immediate := false) -> void:
 		NavigationServer3D.bake_from_source_geometry_data_async(_navmesh, source, func():
 			_region.navigation_mesh = _navmesh
 			_rebake_pending = false)
+
+
+## How far a unit really has to walk between two places.
+func _path_length(from: Vector3, to: Vector3) -> float:
+	var path := NavigationServer3D.map_get_path(get_world_3d().navigation_map, from, to, true)
+	var length := 0.0
+	for i in range(1, path.size()):
+		length += path[i].distance_to(path[i - 1])
+	return length
 
 
 static func _add_obstruction(source: NavigationMeshSourceGeometryData3D, box: Rect2) -> void:
@@ -245,6 +261,54 @@ func _demo_select() -> void:
 				w.selected = true
 			GameState.player(0)["wood"] += 400
 			_selection.place_building(STABLE, Vector3(-30, 0, 30), PI)
+		"walls":
+			# A finished wall segment has to close the ground it stands on, while the gateway
+			# of a gate stays open - and an enemy that tries to use it is stopped in front of
+			# it and starts hitting it instead.
+			await get_tree().create_timer(0.5).timeout
+			# Off in an empty corner of the map, so no army from either base interferes.
+			var line := SelectionController.wall_run(Vector3(60, 0, 0), Vector3(115, 0, 0))
+			# The gate is two tiles wide, so it takes the place of two segments of the run.
+			var middle := line.size() / 2
+			var wall: Building = null
+			for i in line.size():
+				if i == middle or i == middle + 1:
+					continue
+				var piece := _place_building(WALL, 0, line[i], 0.0)
+				if i == middle - 2:
+					wall = piece
+			var gate := _place_building(GATE, 0, (line[middle] + line[middle + 1]) * 0.5, 0.0)
+			rebuild_navigation(true)
+			# The navigation server only takes the region's new mesh at one of its next syncs.
+			await get_tree().create_timer(0.5).timeout
+			print("%d tiles over %.0f m, %.1f x %.1f each, gate at x=%.1f" % [line.size(),
+				line[-1].x - line[0].x, gate.footprint.size.x, gate.footprint.size.y, gate.global_position.x])
+			var over_wall := _path_length(wall.global_position + Vector3(0, 0, -9), wall.global_position + Vector3(0, 0, 9))
+			var over_gate := _path_length(gate.global_position + Vector3(0, 0, -9), gate.global_position + Vector3(0, 0, 9))
+			print("18 m across a wall segment: %.1f m, across the gateway: %.1f m" % [over_wall, over_gate])
+			assert(over_wall > 24.0, "the wall does not block - the path across it is %.1f m" % over_wall)
+			assert(over_gate < 20.0, "the gateway is not walkable - the path across it is %.1f m" % over_gate)
+			# A red soldier sent through the gate must stop short of it and go for it.
+			var raider := Unit.create("men_yminfantry_l1_02", 1, RED)
+			raider.position = gate.global_position + Vector3(0, 0, -14)
+			add_child(raider)
+			raider.order_move(gate.global_position + Vector3(0, 0, 18))
+			await get_tree().create_timer(8.0).timeout
+			print("raider stopped %.1f m short of the gateway, target: %s, gate down to %.0f of %.0f hit points" % [
+				gate.footprint.position.y - raider.position.z,
+				"the gate" if raider._target == gate else str(raider._target),
+				gate.hit_points, gate.max_hit_points])
+			assert(raider.position.z < gate.footprint.position.y, "the raider walked into the gateway")
+			assert(gate.hit_points < gate.max_hit_points, "the raider is not attacking the gate")
+			# One of its owner's men brings the same gate open.
+			var guard := Unit.create("men_yminfantry_l1_02", 0, BLUE)
+			guard.position = gate.global_position + Vector3(0, 0, 6)
+			add_child(guard)
+			await get_tree().create_timer(1.0).timeout
+			print("gate open for its owner: %s" % gate.is_gate_open())
+			assert(gate.is_gate_open(), "the gate stayed shut for its own side")
+			if _args.has("quit-when-done"):
+				get_tree().quit()
 		"member":
 			# Simulated click on a single soldier: the whole group must end up selected.
 			await get_tree().create_timer(1.2).timeout
@@ -630,9 +694,10 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 func _parse_args() -> void:
 	for arg in OS.get_cmdline_user_args():
-		if arg.begins_with("--") and "=" in arg:
-			var kv := arg.substr(2).split("=", true, 1)
-			_args[kv[0]] = kv[1]
+		if not arg.begins_with("--"):
+			continue
+		var kv := arg.substr(2).split("=", true, 1)
+		_args[kv[0]] = kv[1] if kv.size() > 1 else "1"
 
 
 func _take_snapshot() -> void:

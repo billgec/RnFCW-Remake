@@ -40,7 +40,7 @@ export RNF_DATA_SSA="/path/to/Rise And Fall/Data/data.ssa"   # optional, see con
 | Cmd/Ctrl + right click | attack-move |
 | Hold Option/Alt | show hit point bars |
 | Space · + / − · speed buttons | pause · game speed (0.5x to 3x, any time) |
-| Buttons bottom right | buildings: train units · citizens: found buildings (left click places, right click/Esc cancels) |
+| Buttons bottom right | buildings: train units · citizens: found buildings (left click places, right click/Esc cancels) · walls: hold and drag to lay a whole run |
 | H, or the hero's button | enter hero mode · Esc or H leaves it |
 | F5 | graphics quality: low · medium · high (saved) |
 | Minimap: left click/drag · right click | move the camera · send the selection there |
@@ -74,6 +74,15 @@ stamina ones are not in its data files and are tuned by hand).
   projectiles, death animations, automatic target acquisition
 * Towers are manned: four archers stand on the battlements where the original model's
   `tag_defender` points are, and the one that looses the arrow turns and draws his bow
+* Walls and gates, from the original's own wall pieces: a wall is dragged out as a run the
+  way the original drags one, one 6.1 m tile per segment, and the finished run closes the
+  ground behind it. A tile already built on is skipped rather than refused, so runs can be
+  joined and corners filled. A gate is two tiles wide - that is the width its two door
+  leaves need to meet in the middle - and is simply dropped into a finished run: it turns
+  itself along the wall and the segments it covers are paid back. It stands open while its
+  own men are near and shut for everyone else, so an enemy that reaches it is stopped in
+  front of it and has to break it down; the computer opponent picks the piece in its way
+  that will fall soonest and sends the whole wave at that one
 * Buildings can be rebuilt into their stronger version, straight from the original data:
   Tower to Improved Tower, Town Center to Town Defense, Market to Bazaar
 * Class bonuses via `game/data/bonuses.json` (spears beat cavalry, …), freely editable
@@ -108,7 +117,9 @@ stamina ones are not in its data files and are tuned by hand).
   animation set (directional runs, shield, combo swings, special attack); the soldiers around
   him become a retinue and follow him, and a fallen hero returns at his town center
 
-Not there yet: armour values, terrain/maps, the other three civilizations.
+Not there yet: the ladder and siege tower assault on walls (the models carry the
+`tag_scaffolding*` attachment points for it), armour values, terrain/maps, the other three
+civilizations.
 
 ## Performance
 **TODO** increase performance
