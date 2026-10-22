@@ -82,6 +82,7 @@ public final class ExportCiv {
                         upgrade.put("unlocks", t == null ? new int[0] : t.unlocks());
                         upgrade.put("icon", icon == null ? "" : icon);
                         upgrade.put("cost", cost(t, true));
+                        if (duplicate(upgrades, upgrade.get("name"), icon)) continue;
                         upgrades.add(upgrade);
                         continue;
                     }
@@ -104,6 +105,7 @@ public final class ExportCiv {
                         Map<String, Object> step = new LinkedHashMap<>();
                         step.put("building", udf);
                         step.put("name", stats.displayName(unit));
+                        if (duplicate(becomes, step.get("name"), icon)) continue;
                         step.put("slot", cell.index());
                         step.put("level", t == null ? 1 : Math.max(1, t.level()));
                         step.put("requires_research", t == null ? 0 : t.prerequisiteId());
@@ -133,6 +135,10 @@ public final class ExportCiv {
                     entry.put("requires_research", t == null ? 0 : t.prerequisiteId());
                     trains.add(entry);
                 }
+                // A research that unlocks nothing and carries the same label and icon as one of
+                // this building's conversions is the conversion's own tech entry: the wall's
+                // "Gate" research next to its "Gate" button. One button is enough.
+                upgrades.removeIf(u -> duplicate(becomes, ((Map<?, ?>) u).get("name"), (String) ((Map<?, ?>) u).get("icon")));
                 DbTechTree.Entry bt = tech.byId(building.objectId());
                 String requires = null;
                 if (bt != null && bt.prerequisiteId() != 0) {
@@ -208,6 +214,21 @@ public final class ExportCiv {
             Files.writeString(json, Json.pretty(out));
             System.out.println("wrote " + json);
         }
+    }
+
+    /**
+     * True when the panel already holds an entry that looks exactly the same to the player.
+     * A wall's panel lists the left and the right half of a gate as separate conversions,
+     * both called "Gate" and both with the gate icon: two buttons the player cannot tell
+     * apart. Our gate mounts both leaves itself, so one of them is enough.
+     */
+    private static boolean duplicate(List<Object> panel, Object name, Object icon) {
+        for (Object entry : panel) {
+            Map<?, ?> other = (Map<?, ?>) entry;
+            if (java.util.Objects.equals(other.get("name"), name)
+                    && java.util.Objects.equals(other.get("icon"), icon)) return true;
+        }
+        return false;
     }
 
     /** "ACTION - LEVEL 02 (Epoch tech)" -> 2, or 0 when the name is not a hero level. */

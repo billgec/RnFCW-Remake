@@ -2,6 +2,7 @@ extends Node
 ## Computer player: keeps its citizens gathering, trains citizens and soldiers as income
 ## allows, gathers an army at home and attacks the enemy's buildings in waves.
 
+const WallGrid := preload("res://scripts/wall_grid.gd")
 @export var team := 1
 @export var enemy_team := 0
 @export var first_attack_after := 420.0
@@ -190,7 +191,7 @@ func _breach_target(from: Vector3, goal: Vector3) -> Building:
 			continue
 		var centre := b.footprint.get_center()
 		var aside := centre.distance_to(Geometry2D.get_closest_point_to_segment(centre, start, end))
-		if aside > Building.WALL_TILE * 1.5:
+		if aside > WallGrid.TILE * 1.5:
 			continue  # not between the wave and where it is going - worth no detour
 		# Of the pieces in the way, the one that falls soonest: a segment is thinner than a
 		# gate, and one that is already battered is cheaper still than starting fresh.

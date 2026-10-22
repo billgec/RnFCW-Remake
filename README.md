@@ -150,6 +150,7 @@ game/             the Godot project
   assets/nature/     CC0 tree models ("Stylized Nature MegaKit" by Quaternius)
   data/bonuses.json  class bonus table
   scripts/           GDScript (units, buildings, AI, HUD, selection, …)
+  tests/             checks that run without the game (./run.sh test)
   shaders/           player colour, terrain, selection rings
 docs/FORMATS.md   reverse-engineered file format reference
 ```
@@ -162,6 +163,19 @@ and lighting are easiest to edit in the Godot editor itself (`./run.sh edit`).
 
 Gameplay lives in `game/scripts/*.gd`, balance in `game/data/bonuses.json`, the asset
 pipeline in `converter/src/com/rnf/`.
+
+`./run.sh test` runs the checks that need no running game - plain arithmetic such as the
+wall grid in `game/scripts/wall_grid.gd` - and is over in a second. What only a running
+world can answer (does a wall really take its ground out of the navmesh, does a gate open
+for its own men) is checked by the `--demo-select=` runs listed at the top of
+`game/scripts/main.gd`; those start the whole game and take a minute each, so they are for
+when that area changes, not for every edit:
+
+```bash
+./run.sh test                                        # fast, no game
+godot --headless --path game -- --demo-select=walls --quit-when-done
+godot --headless --path game -- --demo-select=wallchain --quit-when-done
+```
 
 ## Credits and licensing
 

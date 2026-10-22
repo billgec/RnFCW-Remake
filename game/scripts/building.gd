@@ -3,6 +3,7 @@ extends Node3D
 ## A building: hit points, training queue, rally point, construction progress and the
 ## drop site role for gathered resources (town centers).
 
+const WallGrid := preload("res://scripts/wall_grid.gd")
 signal destroyed(building: Building)
 signal queue_changed(building: Building)
 
@@ -11,19 +12,10 @@ const SelectionRing := preload("res://scripts/selection_ring.gd")
 const RallyFlag := preload("res://scripts/rally_flag.gd")
 ## Units that are trained one at a time instead of in a batch.
 const SINGLE_UNITS := ["worker", "citizen", "ladder", "onager", "catapult", "ram", "siege"]
-## One wall tile, in metres: the original's wall models are two grid cells wide.
-const WALL_TILE := 6.1
 ## Walls go up far faster than their 8000 hit points would suggest - a run is many of them.
 const WALL_BUILD_TIME := 8.0
 ## How close one of its own men brings a gate open.
 const GATE_OPEN_RANGE := 9.0
-## A gateway is two tiles wide: each of the original's door leaves is 6.5 m long, and the
-## two of them have to meet in the middle of it.
-const GATE_TILES := 2
-## How far each leaf sits from the gate's centre. The leaf models are mirror images with
-## their free edge 4.59 m from their own origin (measured off the door bone in the glTF),
-## so this offset is exactly what makes the two edges touch when the gate is shut.
-const GATE_LEAF_OFFSET := 4.59
 
 var definition_id := ""
 var display_name := ""
@@ -111,7 +103,7 @@ func _ready() -> void:
 	is_drop_site = "towncenter" in definition_id or "settlement" in definition_id or "governmentcenter" in definition_id
 	build_time = WALL_BUILD_TIME if is_wall() else clampf(max_hit_points / 90.0, 20.0, 90.0)
 	_height = _measure_height()
-	footprint = wall_footprint(global_position, global_rotation.y, wall_tiles()) if is_wall() else compute_footprint(self)
+	footprint = WallGrid.footprint(global_position, global_rotation.y, wall_tiles()) if is_wall() else compute_footprint(self)
 	radius = maxf(footprint.size.x, footprint.size.y) * 0.5
 	rally_point = global_position + global_basis.z * (radius + 4.0)
 
@@ -137,6 +129,7 @@ func _ready() -> void:
 	_bar.global_position = Vector3(c.x, _height + 1.0, c.y)
 	if is_gate():
 		all_gates.append(self)
+		clear_for(team, footprint)
 		_mount_gate_leaves()
 	hit_points = max_hit_points * build_progress
 	_apply_construction_look()
@@ -168,9 +161,14 @@ func is_gate() -> bool:
 	return is_wall() and "gate" in definition_id
 
 
-## How many wall tiles this piece covers along the run.
-func wall_tiles() -> int:
-	return GATE_TILES if is_gate() else 1
+## How many grid tiles the piece covers, in its own local axes. A gate is fixed at two
+## tiles wide because that is the span its two door leaves need; every other piece is
+## measured off its own model, so the siege platform comes out as the two by two it is.
+func wall_tiles() -> Vector2i:
+	if is_gate():
+		return Vector2i(WallGrid.GATE_TILES, 1)
+	var size := compute_footprint(self).size + Vector2(1.6, 1.6)  # undo the overhang trim
+	return Vector2i(maxi(1, roundi(size.x / WallGrid.TILE)), maxi(1, roundi(size.y / WallGrid.TILE)))
 
 
 ## True while the gate stands open - its owner may walk through, nobody else.
@@ -178,17 +176,32 @@ func is_gate_open() -> bool:
 	return _gate_open
 
 
+## Own wall segments standing where this piece goes. A gate is two tiles wide - whether it
+## is dropped into a finished run or a single segment is rebuilt into one - so the segments
+## underneath it make way and are paid back.
+static func clear_for(team_index: int, footprint: Rect2, refund := true) -> void:
+	for b in all_buildings.duplicate():
+		if b.team != team_index or not b.is_wall() or b.is_gate():
+			continue
+		if not b.footprint.intersects(footprint):
+			continue
+		if refund:
+			GameState.refund(team_index, Assets.unit_def(b.definition_id).get("cost", {}))
+		all_buildings.erase(b)
+		b.queue_free()
+
+
 ## A gate is two door leaves on their own hinges in the original data, exported as one
 ## model each: the record names the left one, the right one is its mirror image.
 func _mount_gate_leaves() -> void:
 	# Both leaves are modelled around the middle of the gateway, so each has to move out to
 	# its own jamb; their free edges then meet at the gate's centre.
-	_model.position.x = -GATE_LEAF_OFFSET
+	_model.position.x = -WallGrid.GATE_LEAF_OFFSET
 	var right := definition_id.replace("left", "right")
 	if right != definition_id:
 		var leaf := Assets.spawn_unit(right, GameState.team_color(team))
 		if leaf:
-			leaf.position.x = GATE_LEAF_OFFSET
+			leaf.position.x = WallGrid.GATE_LEAF_OFFSET
 			add_child(leaf)
 	for player: AnimationPlayer in find_children("*", "AnimationPlayer", true, false):
 		_gate_leaves.append(player)
@@ -601,17 +614,6 @@ static func compute_footprint(node: Node3D) -> Rect2:
 			else:
 				rect = rect.expand(p)
 	return rect.grow(-0.8)
-
-
-## A wall piece covers whole grid tiles exactly. Its model overhangs them - battlements
-## stick out over the outer face - so a footprint taken from the mesh would be too wide and
-## neighbouring segments of a run would refuse to touch. A piece turned across world X
-## (yaw near a quarter turn) has its length along Z instead.
-static func wall_footprint(at: Vector3, yaw := 0.0, tiles := 1) -> Rect2:
-	var size := Vector2(WALL_TILE * tiles, WALL_TILE)
-	if absf(sin(yaw)) > 0.7:
-		size = Vector2(size.y, size.x)
-	return Rect2(Vector2(at.x, at.z) - size * 0.5, size)
 
 
 static func nearest_drop_site(from: Vector3, team_index: int) -> Building:

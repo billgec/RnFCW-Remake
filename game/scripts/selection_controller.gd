@@ -4,8 +4,11 @@ extends Control
 ## click a building: select it. Right click: attack enemy, gather resource (citizens),
 ## help construct, set rally point (building selected), move (Cmd/Ctrl: attack-move).
 ## Placement mode (from the HUD): left click places the building, right click/Esc cancels.
-## Walls are placed as a run: press where it starts, drag, release where it ends.
+## Walls are placed as a chain the way the original builds them: the first click sets where
+## the wall starts, every click after it builds the leg up to that point and carries on from
+## there, and only right click or Esc ends it.
 
+const WallGrid := preload("res://scripts/wall_grid.gd")
 signal selection_changed
 
 @export var own_team := 0
@@ -21,12 +24,10 @@ var _marker_time := 0.0
 var _placing_id := ""
 var _ghost: Node3D
 var _ghost_valid := false
-## Start of a wall run while the button is held, null otherwise.
+## Where the leg being laid out starts, null while no wall chain is going.
 var _run_from = null
 var _run_ghosts: Array[Node3D] = []
 
-## Longest wall run one drag may lay down.
-const MAX_RUN := 24
 
 @onready var _camera: Camera3D = get_viewport().get_camera_3d()
 
@@ -125,22 +126,17 @@ func _placement_input(event: InputEvent) -> void:
 			return
 		_ghost_valid = _placement_free(_ghost_footprint(_ghost))
 		_tint(_ghost, _ghost_valid)
-	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
 		cancel_placement()
-	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
-		if event.pressed and _lays_a_run():
-			_run_from = _ghost.global_position
+	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		if _lays_a_run():
+			# First click anchors the chain, every one after it builds the leg up to the
+			# cursor and starts the next leg where that one ended.
+			_run_from = _ghost.global_position if _run_from == null else _place_run()
 			_show_run(_run_from, _run_from)
-		elif event.pressed and _ghost_valid:
-			for swallowed in _swallowed_walls(_ghost_footprint(_ghost)):
-				GameState.refund(own_team, Assets.unit_def(swallowed.definition_id).get("cost", {}))
-				swallowed.queue_free()
+		elif _ghost_valid:
+			Building.clear_for(own_team, _ghost_footprint(_ghost))
 			place_building(_placing_id, _ghost.global_position, _ghost.rotation.y)
-			if not event.shift_pressed:
-				cancel_placement()
-		elif not event.pressed and _run_from != null:
-			_place_run()
-			_run_from = null
 			if not event.shift_pressed:
 				cancel_placement()
 	elif event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
@@ -155,24 +151,12 @@ func _gate_yaw(at: Vector3) -> float:
 		if b.team != own_team or not b.is_wall():
 			continue
 		var offset := Vector2(b.global_position.x - at.x, b.global_position.z - at.z)
-		if offset.length() < Building.WALL_TILE * 2.5:
+		if offset.length() < WallGrid.TILE * 2.5:
 			spread += offset.abs()
 	return 0.0 if spread.x >= spread.y else PI * 0.5
 
 
-## The own wall segments a gate set down here would swallow. A gate is dropped straight into
-## a finished run - the two segments it covers make way for it and are paid back.
-func _swallowed_walls(footprint: Rect2) -> Array[Building]:
-	var covered: Array[Building] = []
-	if not "gate" in _placing_id:
-		return covered
-	for b in Building.all_buildings:
-		if b.team == own_team and b.is_wall() and not b.is_gate() and b.footprint.intersects(footprint):
-			covered.append(b)
-	return covered
-
-
-## Wall segments are dragged out in a row; gates and ordinary buildings are placed singly.
+## Wall segments are laid out as a chain of legs; gates and ordinary buildings go down singly.
 func _lays_a_run() -> bool:
 	return _placing_id.begins_with("wall_") and not "gate" in _placing_id
 
@@ -180,32 +164,15 @@ func _lays_a_run() -> bool:
 ## What the ghost will cover once founded - the same rule Building._ready() uses.
 func _ghost_footprint(ghost: Node3D) -> Rect2:
 	if _placing_id.begins_with("wall_"):
-		var tiles := Building.GATE_TILES if "gate" in _placing_id else 1
-		return Building.wall_footprint(ghost.global_position, ghost.rotation.y, tiles)
+		var tiles := Vector2i(WallGrid.GATE_TILES, 1) if "gate" in _placing_id else Vector2i.ONE
+		return WallGrid.footprint(ghost.global_position, ghost.rotation.y, tiles)
 	return Building.compute_footprint(ghost)
-
-
-## The segment centres of a wall run: axis aligned along whichever axis the drag is longer
-## on, one tile apart, never reaching past where the mouse is.
-static func wall_run(from: Vector3, to: Vector3) -> Array[Vector3]:
-	var delta := to - from
-	var sideways := absf(delta.x) >= absf(delta.z)
-	var reach := absf(delta.x) if sideways else absf(delta.z)
-	var step := (Vector3.RIGHT if sideways else Vector3.BACK) * signf(delta.x if sideways else delta.z)
-	var points: Array[Vector3] = [from]
-	for i in range(1, mini(int(reach / Building.WALL_TILE) + 1, MAX_RUN)):
-		points.append(from + step * Building.WALL_TILE * i)
-	return points
-
-
-static func wall_run_yaw(from: Vector3, to: Vector3) -> float:
-	return 0.0 if absf(to.x - from.x) >= absf(to.z - from.z) else PI * 0.5
 
 
 ## Keeps one ghost per segment of the run under the cursor.
 func _show_run(from: Vector3, to: Vector3) -> void:
-	var points := wall_run(from, to)
-	var yaw := wall_run_yaw(from, to)
+	var points := WallGrid.run(from, to)
+	var yaw := WallGrid.run_yaw(from, to)
 	while _run_ghosts.size() < points.size():
 		_run_ghosts.append(_spawn_ghost())
 	_ghost.visible = false
@@ -219,9 +186,11 @@ func _show_run(from: Vector3, to: Vector3) -> void:
 		_tint(ghost, _placement_free(_ghost_footprint(ghost)))
 
 
-## Founds every segment of the run that fits. A tile already taken is skipped rather than
-## refused, so runs can be joined and corners filled; running out of gold or wood stops it.
-func _place_run() -> void:
+## Founds every segment of the leg that fits and returns where it ended, which is where the
+## next leg starts. A tile already taken is skipped rather than refused, so legs join at
+## their corner and runs can be extended; running out of gold or wood stops the leg.
+func _place_run() -> Vector3:
+	var points := WallGrid.run(_run_from, _ghost.global_position)
 	for ghost in _run_ghosts:
 		if not ghost.visible:
 			continue
@@ -229,10 +198,8 @@ func _place_run() -> void:
 			continue
 		if place_building(_placing_id, ghost.global_position, ghost.rotation.y) == null:
 			break  # out of gold or wood
-	# Back to the single ghost under the cursor, ready for the next run.
-	for ghost in _run_ghosts:
-		ghost.visible = false
-	_ghost.visible = true
+	get_tree().current_scene.call("rebuild_navigation")
+	return points[points.size() - 1]
 
 
 static func _tint(node: Node3D, ok: bool) -> void:
@@ -260,9 +227,10 @@ func _placement_free(footprint: Rect2) -> bool:
 	# Walls butt up against each other, so instead of clearance they get a hair of slack so
 	# touching tiles do not read as overlapping; everything else keeps a metre around it.
 	var rect := footprint.grow(-0.05 if _placing_id.begins_with("wall_") else 1.0)
-	var swallowed := _swallowed_walls(footprint)
 	for b in Building.all_buildings:
-		if b in swallowed:
+		# A gate is dropped straight into a finished run: the own segments it covers make
+		# way for it instead of blocking it (Building.clear_for).
+		if "gate" in _placing_id and b.team == own_team and b.is_wall() and not b.is_gate():
 			continue
 		if b.footprint.intersects(rect):
 			return false
