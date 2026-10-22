@@ -167,13 +167,18 @@ pipeline in `converter/src/com/rnf/`.
 `./run.sh test` runs the checks and is over in a few seconds. There are two suites:
 
 * `game/tests/test_walls.gd` - the wall grid (`game/scripts/wall_grid.gd`): where the
-  segments of a leg land, which way they face, how much ground a piece covers. Plain
-  arithmetic that depends on nothing, so it runs as a bare script without even the autoloads.
+  segments of a leg land, which way they face, how much ground a piece covers.
+* `game/tests/test_formation.gd` - the block a group marches in (`game/scripts/formation.gd`):
+  how wide it stands, where each slot sits, who gets which slot, how several blocks line up
+  side by side. The soldiers are stand-ins with nothing but a position and a radius.
 * `game/tests/test_game.tscn` - the pieces as real buildings: their footprints, hit points
   and build times out of the original data, a gate's two leaves and the segments it
   swallows, where the computer opponent breaks through a wall, what a building's panel
   offers, and what things cost. It runs as a scene so the autoloads are there, but it
   builds no skirmish.
+
+The first two are plain arithmetic that depends on nothing, so they run as bare scripts
+without even the autoloads.
 
 A failing check names itself and the run carries on, so one go lists everything that is
 wrong rather than only the first thing.
